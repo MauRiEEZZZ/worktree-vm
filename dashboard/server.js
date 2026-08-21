@@ -95,8 +95,15 @@ function idleSince(sid, isIdle) {
 //   needs_you — idle at an empty prompt AND the last line reads like it wants the user
 //   done     — idle AND the last line reads finished
 //   idle     — idle, unclear (treat as needs-you-lite in the UI)
-const NEEDS_RE = /(waiting for|your go|let me know|do you want|would you like|can you|could you|may i|shall i|should i|run !|\brun `|give (me|it)|which|\?\s*$)/i;
-const DONE_RE = /(no follow-up|nothing (further|else|more)|nothing left|all done|fully done|is done|is complete|completed|finished|wrapped up)/i;
+// Both regexes are overridable via the config (dashboard.attention.needs_re /
+// done_re -> NEEDS_RE / DONE_RE in the env) for sessions that converse in
+// another language; the built-in defaults match English phrasing.
+const NEEDS_RE = process.env.NEEDS_RE
+  ? new RegExp(process.env.NEEDS_RE, 'i')
+  : /(waiting for|your go|let me know|do you want|would you like|can you|could you|may i|shall i|should i|run !|\brun `|give (me|it)|which|\?\s*$)/i;
+const DONE_RE = process.env.DONE_RE
+  ? new RegExp(process.env.DONE_RE, 'i')
+  : /(no follow-up|nothing (further|else|more)|nothing left|all done|fully done|is done|is complete|completed|finished|wrapped up)/i;
 function attentionOf(pane) {
   const lines = (pane || '').split('\n').map(l => l.replace(/\s+$/, ''));
   const nonEmpty = lines.filter(l => l.trim());
