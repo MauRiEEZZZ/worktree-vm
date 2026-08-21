@@ -94,6 +94,12 @@ case "$REPO_DIR" in
 esac
 REPO_URL="https://github.com/MauRiEEZZZ/worktree-vm.git"
 HOST_CONFIG="$CONFIG"
+# Embed the resolved config VERBATIM into the seeding provision step (indented
+# to the YAML block-scalar level), so the guest always receives exactly the
+# config up.sh rendered from — wherever it lives on the host. Depending on the
+# guest seeing the host path would silently fall back to repo defaults when the
+# config is outside the mounted home.
+CONFIG_CONTENT="$(sed 's/^/      /' "$CONFIG")"
 
 # ---- render --------------------------------------------------------------------
 TPL="$(cat "$LIMA_DIR/vm.yaml.template")"
@@ -107,6 +113,7 @@ TPL="${TPL//@PORT_FORWARDS@/$PORT_FORWARDS}"
 TPL="${TPL//@PROVISION_DATA_DISK@/$PROVISION_DATA_DISK}"
 TPL="${TPL//@REPO_HOST_DIR@/$REPO_DIR}"
 TPL="${TPL//@REPO_URL@/$REPO_URL}"
+TPL="${TPL//@CONFIG_CONTENT@/$CONFIG_CONTENT}"
 TPL="${TPL//@HOST_CONFIG@/$HOST_CONFIG}"
 TPL="${TPL//@INSTANCE@/$INSTANCE}"
 TPL="${TPL//@DASH_PORT@/$DASH_PORT}"

@@ -63,15 +63,24 @@ provision:
       fi
 
 @PROVISION_DATA_DISK@
-  # ---- seed the guest config from the host config once, then provision --------
+  # ---- seed the guest config, then provision -----------------------------------
+  # The config content is EMBEDDED verbatim at render time (up.sh), NOT copied
+  # from a host path: the guest only sees paths under the mounted host home, so a
+  # config living elsewhere would silently fall back to the repo defaults — wrong
+  # port, empty repo registry, and a closing message that lies. An existing guest
+  # config (e.g. persisted on the data disk) is never overwritten.
   - mode: user
     script: |
       #!/bin/bash
       set -eu
       mkdir -p "$HOME/.config/wt"
-      if [ ! -f "$HOME/.config/wt/config.yaml" ] && [ -f "@HOST_CONFIG@" ]; then
-        cp "@HOST_CONFIG@" "$HOME/.config/wt/config.yaml"
-        echo "seeded guest config from @HOST_CONFIG@"
+      if [ ! -f "$HOME/.config/wt/config.yaml" ]; then
+        cat > "$HOME/.config/wt/config.yaml" <<'WT_EMBEDDED_CONFIG'
+@CONFIG_CONTENT@
+      WT_EMBEDDED_CONFIG
+        echo "seeded guest config (embedded at render time from @HOST_CONFIG@)"
+      else
+        echo "guest config already present — keeping it (host config NOT re-applied; the install summary below prints the port actually in effect)"
       fi
       bash "$HOME/worktree-vm/install.sh"
 
@@ -90,4 +99,7 @@ message: |
     wt-new <repo> <name> "optional task"
     wt-ls                     # overview;  wt-resume / wt-rm / wt-env / wt-help
 
-  Dashboard: http://localhost:@DASH_PORT@ (port-forwarded).
+  Dashboard: http://localhost:@DASH_PORT@ — the guest follows its own
+  ~/.config/wt/config.yaml (seeded from your host config on first boot, so the
+  port matches). If the guest kept an existing config, trust the guest's port —
+  the provision log's install summary printed the exact URL.
