@@ -2,30 +2,83 @@
 
 A ready-to-install Linux dev VM for running **many AI coding sessions in parallel** — each on its
 own git worktree, in its own tmux session, with its own agent (Claude Code or OpenAI Codex) — plus a
-small web dashboard to create, watch and resume them.
+small web dashboard to create, watch, triage and resume them.
 
-You drive it from your host terminal: `ssh` into the VM, `tmux` runs inside it. Nothing but an SSH
-client is needed on the host, so the same setup works on **macOS** (via Lima) and **Windows** (via
-WSL2).
-
-> **Status: under construction.** The generic core is being extracted from a working private
-> single-file setup. Not yet usable — see the roadmap below.
+You drive it from your host terminal; `tmux` runs inside the guest. The same setup works on
+**macOS** (Lima VM) and **Windows** (WSL2 distro), because everything above the hypervisor is one
+platform-agnostic `install.sh`.
 
 ## Why
 
 Letting an AI agent work aggressively is much more comfortable on a disposable machine that is not
-your laptop. Give each task its own worktree and branch, and several agents can work at once without
-stepping on each other. The whole machine is defined in version-controlled files, so you can throw it
-away and rebuild it in minutes.
+your laptop. Give each task its own worktree and branch, and several agents work at once without
+stepping on each other. The whole machine is defined in version-controlled files, so you can throw
+it away and rebuild it in minutes — while your worktrees, session history and logins survive.
 
-## Roadmap
+## The model
 
-- [ ] `install.sh` + `provision/` — platform-agnostic provisioning for any Ubuntu 24.04 guest
-- [ ] `lib/wt/` — the `wt-*` worktree/tmux/agent session commands
-- [ ] `dashboard/` — session dashboard (create, attach, resume, triage, restore)
-- [ ] `platform/lima/` (macOS) and `platform/wsl/` (Windows) recipes
-- [ ] `ide/` — optional per-worktree IDE backend (code-server or JetBrains Rider)
-- [ ] Docs: install guides, config reference, hooks
+- **One session = one worktree = one branch = one tmux window = one agent.**
+  `wt-new <repo> pdf-export-fix "repro and fix the crash in ..."` clones the repo on demand, makes
+  `~/wt/<repo>/<name>` on branch `feat/<name>`, seeds gitignored local config, restores
+  dependencies, and launches Claude (with Remote Control, so it can ask you questions) or Codex.
+- **`wt-*` commands** for everything: `wt-ls` (pipeable: `wt-ls | grep stopped | wt-resume`),
+  `wt-resume`, `wt-rm` (safe by default, tombstones metadata), `wt-restore` (deleted session +
+  its preserved conversation come back), `wt-review` (independent Claude+Codex second-opinion
+  review of a session's work), `wt-seed-main`, `wt-env`, `wt-ide`. Tab completion included.
+- **Dashboard** (localhost web UI): create sessions from a task or a pasted issue/PR URL, triage by
+  "needs you / working / done" with priorities and an optional LLM attention digest, PR + CI
+  badges, one-click resume/review/delete/restore, per-session copy-attach one-liners — and an
+  optional watcher that auto-starts a review session for every PR where your review is requested.
+- **Optional per-worktree IDE**: `wt-ide` with the `code-server` backend (VS Code in the browser,
+  one instance per worktree) or JetBrains `rider` (Gateway remote-dev). Off by default.
+- **Config + hooks, no forks**: everything project-specific (repo registry, base branch, secrets
+  sources, certificates, review scoping, deploy-URL badges, toolchain stacks like
+  dotnet/powershell/azure-cli/pulumi) comes from one `config.yaml` and four best-effort hook
+  points — so a private overlay repo can tailor the VM without touching this one.
+
+## Quick start
+
+**macOS (Lima)** — [full guide](docs/install-macos-lima.md):
+
+```bash
+brew install lima
+git clone https://github.com/MauRiEEZZZ/worktree-vm ~/worktree-vm && cd ~/worktree-vm
+cp config.example.yaml ~/.config/wt/config.yaml && $EDITOR ~/.config/wt/config.yaml  # fill in repos:
+./platform/lima/up.sh
+```
+
+**Windows (WSL2)** — [full guide](docs/install-windows-wsl.md):
+
+```powershell
+wsl --install -d Ubuntu-24.04    # elevated PowerShell, reboot, create your Linux user
+```
+```bash
+# inside Ubuntu:
+sudo apt update && sudo apt install -y git
+printf '[boot]\nsystemd=true\n' | sudo tee /etc/wsl.conf   # then from Windows: wsl --shutdown, reopen
+git clone https://github.com/MauRiEEZZZ/worktree-vm && cd worktree-vm
+cp config.example.yaml ~/.config/wt/config.yaml && $EDITOR ~/.config/wt/config.yaml
+./install.sh
+```
+
+Then, in the guest: `gh auth login`, `claude` (log in once), and:
+
+```bash
+wt-new <repo> my-feature "optional opening task"
+wt-ls
+```
+
+Dashboard at <http://localhost:7300> (configurable).
+
+## Docs
+
+- [Install on macOS (Lima)](docs/install-macos-lima.md) — includes the persistent-data-disk scheme
+- [Install on Windows (WSL2)](docs/install-windows-wsl.md) — full from-bare-Windows onboarding
+- [Config reference](docs/config-reference.md) — every key of `~/.config/wt/config.yaml`
+- [Hooks](docs/hooks.md) — how a private overlay plugs in
+- [skills/](skills/) — Claude Code skills: `dev-sessions` (orchestrate sessions from your main
+  Claude, with LOCAL/SSH/WSL transports) and `self-review` (a session requests its own independent
+  review)
 
 ## License
 
