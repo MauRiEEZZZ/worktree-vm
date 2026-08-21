@@ -76,9 +76,23 @@ Dashboard at <http://localhost:7300> (configurable).
 - [Install on Windows (WSL2)](docs/install-windows-wsl.md) — full from-bare-Windows onboarding
 - [Config reference](docs/config-reference.md) — every key of `~/.config/wt/config.yaml`
 - [Hooks](docs/hooks.md) — how a private overlay plugs in
-- [skills/](skills/) — Claude Code skills: `dev-sessions` (orchestrate sessions from your main
-  Claude, with LOCAL/SSH/WSL transports) and `self-review` (a session requests its own independent
-  review)
+- [skills/](skills/) — Claude Code skills: `guided-install` (an agent performs the install for
+  you — see below), `dev-sessions` (orchestrate sessions from your main Claude, with
+  LOCAL/SSH/WSL transports) and `self-review` (a session requests its own independent review)
+
+### Prefer to have an agent do the install?
+
+`skills/guided-install/SKILL.md` is written for a Claude Code session to *execute*: it detects
+the platform, walks the install step-by-verified-step, fixes what breaks (recording every
+deviation in [docs/field-notes-wsl.md](docs/field-notes-wsl.md)), and leaves you only the steps
+that genuinely need a human (elevation, reboots, logins). To make it available, either symlink it
+into your skills directory —
+
+```bash
+mkdir -p ~/.claude/skills && ln -s "$PWD/skills/guided-install" ~/.claude/skills/guided-install
+```
+
+— or simply tell Claude: *"read skills/guided-install/SKILL.md in this repo and follow it"*.
 
 ## License
 

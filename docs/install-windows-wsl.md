@@ -1,5 +1,14 @@
 # Install on Windows (WSL2)
 
+> **Prefer to have an agent do it?** Load
+> [`skills/guided-install`](../skills/guided-install/SKILL.md) in a Claude Code
+> session (symlink it into `~/.claude/skills`, or just say *"read
+> skills/guided-install/SKILL.md and follow it"*). It performs everything below
+> except the few steps that genuinely need you (the elevated `wsl --install`,
+> the `wsl --shutdown` restart, passwords and logins), verifies each phase, and
+> records any fixes it had to make in
+> [field-notes-wsl.md](field-notes-wsl.md).
+
 On Windows the "VM" is a WSL2 Ubuntu distro. Everything the guest needs is the
 same platform-agnostic `install.sh` used on macOS — WSL2 just needs systemd
 switched on first. Requires Windows 10 build 19041+ or Windows 11 (Home
