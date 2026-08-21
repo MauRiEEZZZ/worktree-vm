@@ -1,7 +1,8 @@
 # worktree.sh — clone/worktree plumbing shared by the wt-* commands.
 
 _wt_ensure() {   # ensure repo <key> is cloned + fetched; echo its path on stdout
-  local key="$1" full="${WT_REPOS[$key]:-}" dir
+  local key="$1" full dir
+  full="${WT_REPOS[$key]:-}"
   [ -z "$full" ] && { echo "unknown repo: $key (see: wt-repos)" >&2; return 1; }
   dir="$(_wt_clonepath "$key")"
   if [ ! -d "$dir/.git" ]; then
