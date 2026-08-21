@@ -1,0 +1,88 @@
+# worktree-vm configuration
+# ==========================
+# Copy this file to ~/.config/wt/config.yaml and edit it, then run:
+#   lib/config/generate-env.sh
+# (install.sh does both automatically). The generator turns this file into two
+# derived files that the tooling actually reads at runtime:
+#   ~/.config/wt/env.sh          sourced by the wt-* shell library
+#   ~/.config/wt/dashboard.env   EnvironmentFile= for the dashboard systemd unit
+#
+# Supported YAML subset: two levels of 2-space-indented maps, scalar values,
+# and lists (inline `[a, b]` or 2-space-indented `- item` lines). Quote values
+# that contain `#` or `:`. `~/` at the start of a path expands to $HOME.
+
+# Repo registry: short key -> GitHub owner/repo. The key names the clone
+# (~/repos/<key>), the worktrees (~/wt/<key>/<name>) and the session ids
+# (<key>--<name>). Empty registry = wt-new has nothing to target yet.
+repos:
+  # myrepo: my-org/my-repo
+  # infra: my-org/my-infra
+
+# Clone-path overrides: key -> absolute path of the main clone. Use this when a
+# repo's main clone lives somewhere other than ~/repos/<key> (e.g. a pre-existing
+# clone you don't want to move). An entry here wins unconditionally.
+clone_paths:
+  # myrepo: ~/my-legacy-clone
+
+# Branch that new worktrees fall back to when the clone's origin/HEAD cannot be
+# resolved (also the review merge-base fallback).
+default_base_branch: main
+
+github:
+  # Org/user whose PRs the dashboard's PR-review watcher polls for
+  # review-requests addressed to you. Empty = watcher off.
+  review_owner: ""
+  # Model for auto-started review sessions (cheaper than a top-tier default is
+  # sensible for background work). Empty = the agent's own default.
+  review_model: sonnet
+
+agents:
+  # Agent that wt-new launches when --agent is not given: claude | codex.
+  default: claude
+  # Model aliases offered in the dashboard's model dropdown (Claude only).
+  # The empty "default" choice is always offered in addition to these.
+  model_choices: [opus, sonnet, haiku]
+
+dashboard:
+  port: 7300
+  # Regex that recognises deploy/preview URLs in PR descriptions/comments; the
+  # first match becomes the card's "deploy" link. Empty = feature off.
+  # Example (Azure App Service + Static Web Apps preview environments):
+  #   'https?://[a-z0-9.-]*-(?:pr-?)?\d+[a-z0-9.-]*\.(?:example-paas)\.net[^\s)\]]*'
+  deploy_url_regex: ""
+  # SSH alias/host of this VM as reachable FROM your workstation. Used in the
+  # copy-attach and port-forward one-liners the dashboard offers. Empty = the
+  # one-liners omit the ssh hop (plain tmux commands).
+  ssh_host: ""
+
+ide:
+  # IDE backend for wt-ide: none | rider | code-server. `none` (default) keeps
+  # IDE support off entirely.
+  backend: none
+  # First local port for per-worktree IDE instances (code-server backend).
+  port_base: 6000
+
+secrets:
+  # Durable folder holding per-repo gitignored local config (repo-relative
+  # paths under <source>/<key>/). wt-seed-main copies from here into the main
+  # clones. Empty = wt-seed-main only runs the seed-main hook.
+  source: ""
+
+sessions:
+  # Where the dashboard keeps per-session metadata JSON (tombstones of deleted
+  # sessions live in <dir>/archive). Point this at an existing directory if you
+  # are migrating from an older setup with live session data.
+  meta_dir: ~/.wt-sessions
+
+hooks:
+  # Directory with your hook scripts (<name>.sh). See hooks/README.md for the
+  # contract. Hooks are best-effort: a failing hook warns and continues.
+  dir: ~/.config/wt/hooks
+
+# Opt-in toolchains installed by provision/90-stacks.sh. Available:
+# dotnet, powershell, azure-cli, pulumi. Empty = none.
+stacks: []
+
+# Extra guest ports your projects need forwarded to the host (informational for
+# the platform recipes; the dashboard port above is always forwarded).
+ports: []
