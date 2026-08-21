@@ -1,0 +1,417 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<title>wt · working trees</title>
+<style>
+  :root { --bg:#0f1115; --card:#181b22; --line:#262b36; --fg:#e6e9ef; --mut:#8b93a3;
+          --grn:#3fb950; --yel:#d29922; --red:#f85149; --blu:#58a6ff; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+  header { padding:18px 22px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:14px; position:sticky; top:0; background:var(--bg); z-index:5; }
+  h1 { font-size:16px; margin:0; font-weight:600; display:flex; align-items:center; gap:9px; }
+  .logo { display:inline-block; background:var(--blu); color:#04101f; font-weight:700; border-radius:6px;
+          padding:2px 8px; font-size:14px; letter-spacing:-.5px; }
+  .muted { color:var(--mut); }
+  .spacer { margin-left:auto; }
+  .wrap { max-width:980px; margin:0 auto; padding:22px; }
+  form.new { display:flex; flex-direction:column; gap:8px; margin-bottom:20px; }
+  .actions { display:flex; gap:8px; align-items:center; }
+  textarea { width:100%; background:var(--card); border:1px solid var(--line); color:var(--fg); padding:9px 12px; border-radius:8px; font-size:14px; font-family:inherit; resize:vertical; min-height:64px; line-height:1.5; }
+  select, button { background:var(--card); border:1px solid var(--line); color:var(--fg); padding:8px 12px; border-radius:8px; cursor:pointer; font-size:13px; }
+  select:hover, button:hover { border-color:var(--blu); }
+  button.primary { background:var(--blu); border-color:var(--blu); color:#04101f; font-weight:600; }
+  button.danger:hover { border-color:var(--red); color:var(--red); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px 18px; margin-bottom:14px; }
+  .row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .name { font-weight:600; font-size:15px; }
+  .dot { width:9px; height:9px; border-radius:50%; display:inline-block; }
+  .running{background:var(--grn)} .starting{background:var(--yel)} .stopped{background:var(--red)}
+  .pill { font-size:11px; padding:2px 8px; border:1px solid var(--line); border-radius:20px; color:var(--mut); }
+  .pill.agent-claude { border-color:#d97757; color:#e8a087; }
+  .pill.agent-codex  { border-color:#10a37f; color:#3ecf9e; }
+  /* triage: priority selector, attention badge, recap line, sections */
+  .prio { font-size:11px; font-weight:700; border-radius:6px; padding:1px 4px; background:#0b0d11; border:1px solid var(--line); cursor:pointer; }
+  .prio-p1 { color:#ff6b6b; border-color:#ff6b6b; } .prio-p2 { color:#e8c07a; border-color:#7a6a3a; } .prio-p3 { color:#8aa0b4; }
+  .att { font-size:11px; padding:2px 8px; border-radius:20px; font-weight:600; }
+  .att-need { background:#3a1414; color:#ff9b8a; border:1px solid #ff6b6b; }
+  .att-work { background:#10233b; color:#7db8ff; border:1px solid #2f6fb0; }
+  .att-done { background:#10261a; color:#5fd39a; border:1px solid #2f7a52; }
+  .att-idle { background:#1a1d24; color:#9aa4b2; border:1px solid var(--line); }
+  .att-stop { background:#1a1d24; color:var(--mut); border:1px solid var(--line); }
+  .recap { margin-top:8px; font-size:13px; color:#c6cfdb; padding:6px 10px; border-radius:8px; background:#0b0d11; border-left:3px solid var(--line); }
+  .recap.att-need { border-left-color:#ff6b6b; } .recap.att-done { border-left-color:#2f7a52; } .recap.att-work { border-left-color:#2f6fb0; }
+  .digest { background:#0e1830; border:1px solid #2f6fb0; border-radius:10px; padding:10px 14px; margin-bottom:16px; font-size:13px; }
+  .recover { background:#161a22; border:1px solid var(--line); border-radius:10px; padding:10px 14px; margin-bottom:16px; font-size:13px; }
+  .recover .rrow { display:flex; gap:8px; align-items:center; flex-wrap:wrap; padding:5px 0; }
+  .recover .rrow.head { border-bottom:1px solid var(--line); margin-bottom:6px; padding-bottom:6px; }
+  .recover .rrow.head button { margin-left:auto; }
+  .recover .rrow .recap { flex-basis:100%; margin-top:2px; }
+  .recover .cnt { display:inline-block; min-width:18px; text-align:center; background:var(--line); border-radius:10px; font-size:11px; padding:0 6px; }
+  .recover button.rrestore { margin-left:auto; }
+  .digest .drow { padding:4px 0; }
+  .digest .drow.head { display:flex; align-items:center; gap:8px; border-bottom:1px solid var(--line); margin-bottom:6px; padding-bottom:6px; }
+  .digest .drow.head button { margin-left:auto; }
+  .nudge { background:#3a1414; border:1px solid #ff6b6b; color:#ffd0c8; border-radius:10px; padding:10px 14px; margin-bottom:16px; font-size:14px; }
+  .nudge b { color:#ff9b8a; }
+  .nudge button { margin-left:6px; }
+  .sec { margin-bottom:22px; }
+  .sec h2 { font-size:13px; text-transform:uppercase; letter-spacing:.05em; color:var(--mut); margin:0 0 10px; font-weight:700; }
+  .sec .cnt { display:inline-block; min-width:18px; text-align:center; background:var(--line); color:var(--fg); border-radius:10px; font-size:11px; padding:0 6px; }
+  .sec-need h2 { color:#ff9b8a; } .sec-need .cnt { background:#3a1414; color:#ff9b8a; }
+  .repo { font-size:11px; padding:2px 9px; border-radius:20px; color:#04101f; background:var(--blu); font-weight:600; }
+  .links { margin-left:auto; display:flex; gap:8px; align-items:center; }
+  a.link { color:var(--blu); text-decoration:none; font-size:13px; border:1px solid var(--line); padding:5px 10px; border-radius:7px; }
+  a.link:hover { border-color:var(--blu); }
+  a.link.off { color:var(--mut); pointer-events:none; opacity:.5; }
+  .task { color:var(--mut); margin:8px 0 0; }
+  pre.act { background:#0b0d11; border:1px solid var(--line); border-radius:8px; padding:10px 12px; margin:10px 0 0;
+            font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace; color:#aeb6c4; white-space:pre-wrap; max-height:260px; overflow:auto; }
+  .checks-passing{color:var(--grn)} .checks-failing{color:var(--red)} .checks-pending{color:var(--yel)}
+  .empty { color:var(--mut); text-align:center; padding:40px; }
+  .idebox { background:#10233b; border:1px solid var(--blu); border-radius:10px; padding:12px 14px; margin-bottom:16px; font-size:13px; }
+  .idebox.err { background:#2a1416; border-color:var(--red); color:#f5b5b0; }
+  .idebox .ideline { margin-top:8px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .idebox code { background:#0b0d11; border:1px solid var(--line); border-radius:6px; padding:2px 7px; font:12px ui-monospace,Menlo,monospace; color:#aeb6c4; word-break:break-all; }
+  .idebox code.lnk { max-width:100%; }
+  .err { color:var(--red); font-size:13px; margin-left:8px; }
+</style>
+</head>
+<body>
+<header>
+  <h1><span class="logo">wt</span> working trees</h1>
+  <span class="muted" id="meta"></span>
+  <span class="spacer"></span>
+  <label class="muted" style="font-size:13px">refresh
+    <select id="rate">
+      <option value="5000">5 sec</option>
+      <option value="60000">1 min</option>
+      <option value="300000">5 min</option>
+      <option value="900000">15 min</option>
+    </select>
+  </label>
+  <button id="refresh">↻ now</button>
+</header>
+<div class="wrap">
+  <form class="new" id="newForm">
+    <div class="actions">
+      <label class="muted" style="font-size:13px">repo</label>
+      <select id="repo"><option value="">…</option></select>
+      <label class="muted" style="font-size:13px">agent</label>
+      <select id="agent"><option value="claude">claude</option><option value="codex">codex</option></select>
+      <label class="muted" style="font-size:13px">model</label>
+      <select id="model" title="model for the session (empty = your account default). Claude only.">
+        <option value="">default</option>
+      </select>
+      <label class="muted" style="font-size:13px">prio</label>
+      <select id="priority" title="priority (adjustable per session later)">
+        <option value="p1">P1</option><option value="p2" selected>P2</option><option value="p3">P3</option>
+      </select>
+    </div>
+    <textarea id="prompt" placeholder="Task for the new session — feel free to paste an issue or PR URL as context. The repo above determines where the work happens (not the URL)."></textarea>
+    <div class="actions">
+      <button class="primary" type="submit">+ New session</button>
+      <span class="muted">⌘/Ctrl + Enter</span>
+      <span class="err" id="newErr"></span>
+    </div>
+  </form>
+  <div id="digest" class="digest" hidden></div>
+  <div id="nudge" class="nudge" hidden></div>
+  <div id="recover" class="recover" hidden></div>
+  <div id="list"><div class="empty">Loading…</div></div>
+</div>
+<script>
+const $ = s => document.querySelector(s);
+let META = { sshHost: '', models: [] };
+function esc(s){ return (s||'').replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+function link(href, label, title){ return href
+  ? `<a class="link" href="${esc(href)}" target="_blank" rel="noreferrer" title="${esc(title||'')}">${label}</a>`
+  : `<a class="link off">${label}</a>`; }
+
+function ideCtl(s){
+  if(s.status!=='running') return '';
+  const i = s.ide || {};
+  if(i.running){
+    if(i.starting) return `<span class="pill">⌨ IDE starting…</span><button class="danger" data-idestop="${esc(s.id)}">⏹ stop</button>`;
+    return `<span class="pill">⌨ IDE :${esc(i.port||'')}</span>`
+      + `<button data-cp="${esc(i.link)}" title="connect link for your IDE client">⧉ connect link</button>`
+      + `<button data-cp="${esc(i.forward)}" title="port-forward for your workstation">⧉ port forward</button>`
+      + `<button class="danger" data-idestop="${esc(s.id)}">⏹ stop IDE</button>`;
+  }
+  if(window.ANY_IDE) return `<button disabled title="Another IDE backend is already running; stop that one first (one at a time)">⌨ IDE</button>`;
+  return `<button data-idestart="${esc(s.id)}" title="start the IDE backend on this worktree">⌨ start IDE</button>`;
+}
+// Per-session color (stable, from the session id). These are exactly Claude Code's /color
+// names in a FIXED order — wt-new picks the same index via the same hash and runs `/color`,
+// so the card and the session's prompt-bar colour match by name. Keep this list + order in
+// sync with WT_COLORS in the wt-* helpers (lib/wt/color.sh).
+const SESSION_COLORS = [
+  {name:'red',    bg:'#2b1f21', bd:'#d0605e'}, {name:'blue',   bg:'#1e2733', bd:'#5b9bd9'},
+  {name:'green',  bg:'#1e2a22', bd:'#4eb583'}, {name:'yellow', bg:'#2a2a1c', bd:'#c9c04e'},
+  {name:'purple', bg:'#271e2e', bd:'#a878d0'}, {name:'orange', bg:'#2a201c', bd:'#d07a4e'},
+  {name:'pink',   bg:'#2b1e27', bd:'#d072a8'}, {name:'cyan',   bg:'#1e2a2a', bd:'#4ec9c9'},
+];
+function sessionColor(id){ let h=0; for(let i=0;i<id.length;i++) h=(h*31 + id.charCodeAt(i))>>>0; return SESSION_COLORS[h % SESSION_COLORS.length]; }
+const ATT = { needs_you:{l:'needs you',c:'att-need'}, working:{l:'working',c:'att-work'}, done:{l:'done',c:'att-done'}, idle:{l:'idle',c:'att-idle'}, stopped:{l:'stopped',c:'att-stop'} };
+function fmtWait(ms){ if(!ms) return ''; const m=Math.round(ms/60000); if(m<60) return `waiting ${m}m`; const h=Math.floor(m/60); return `waiting ${h}h${String(m%60).padStart(2,'0')}`; }
+function prioSelect(s){ return `<select data-prio="${esc(s.id)}" class="prio prio-${esc(s.priority||'p2')}" title="priority (adjust whenever you like)">`
+  + ['p1','p2','p3'].map(p=>`<option value="${p}"${(s.priority||'p2')===p?' selected':''}>${p.toUpperCase()}</option>`).join('') + `</select>`; }
+function card(s){
+  const pr = s.pr;
+  const prLink = pr ? link(pr.url, `PR #${pr.number}`, pr.title) : `<a class="link off">PR —</a>`;
+  const checks = pr && pr.checks!=='none' ? `<span class="pill checks-${pr.checks}">CI ${pr.checks}</span>` : '';
+  const draft = pr && pr.draft ? `<span class="pill">draft</span>` : '';
+  const srcLabel = (s.issue && s.issue.kind==='pr' ? 'source PR' : 'issue') + ' ↗';
+  const c = sessionColor(s.id);
+  const att = ATT[s.attention] || ATT.idle;
+  return `<div class="card" style="background:${c.bg};border-left:4px solid ${c.bd}">
+    <div class="row">
+      <span class="dot ${s.status}"></span>
+      ${prioSelect(s)}
+      <span class="repo" title="${esc(s.repoFull||'')}">${esc(s.repo)}</span>
+      <span class="name">${esc(s.name)}</span>
+      ${s.status==='running' ? `<span class="att ${att.c}" title="session status">${att.l}${s.attached?' · you are here':''}</span>` : ''}
+      ${s.status==='running' && s.attention!=='working' && s.waitingMs ? `<span class="muted" style="font-size:12px">${fmtWait(s.waitingMs)}</span>` : ''}
+      <span class="pill agent-${esc(s.agent||'claude')}" title="AI agent of this session">${esc(s.agent||'claude')}</span>
+      ${s.model ? `<span class="pill" title="model override for this session">${esc(s.model)}</span>` : ''}
+      <span class="pill">${esc(s.branch)}</span>
+      ${draft}${checks}
+      <span class="links">
+        ${prLink}
+        ${link(s.deploy, 'deploy ↗', s.deploy||'no deploy URL yet')}
+        ${link(s.issue&&s.issue.url, srcLabel, s.issue?s.issue.repo+'#'+s.issue.number:'')}
+        ${s.status==='running' ? `<button data-attach="${esc(s.id)}" title="copy the command to open this session's console">⧉ attach</button>` : ''}
+        ${ideCtl(s)}
+        ${s.status!=='running' ? `<button data-resume="${esc(s.id)}" title="resume the ${esc(s.agent||'claude')} session in tmux">▶ resume</button>` : ''}
+        ${!/-review$/.test(s.name||'') ? `<select data-reviewscope="${esc(s.id)}" title="review scope" style="font-size:12px">`
+          + `<option value="working">working</option><option value="committed">committed</option><option value="all">all</option></select>`
+          + `<button data-review="${esc(s.id)}" title="start an independent Claude+Codex review of this session (reports, posts nothing)">🔍 review</button>` : ''}
+        <button class="danger" data-rm="${esc(s.id)}">delete</button>
+      </span>
+    </div>
+    ${s.recap ? `<div class="recap ${att.c}" title="latest state of the session">${esc(s.recap)}</div>` : (s.task ? `<div class="task">${esc(s.task.split('\n')[0])}</div>` : '')}
+    ${s.activity ? `<pre class="act">${esc(s.activity)}</pre>` : ''}
+  </div>`;
+}
+
+async function loadMeta(){
+  try{
+    const r = await fetch('/api/meta'); META = await r.json();
+    $('#meta').textContent = META.sshHost || location.hostname;
+    const md = $('#model');
+    md.innerHTML = '<option value="">default</option>' + (META.models||[]).map(m=>`<option value="${esc(m)}">${esc(m)}</option>`).join('');
+    const savedM = localStorage.getItem('model');
+    if(savedM!==null && [...md.options].some(o=>o.value===savedM)) md.value = savedM;
+  }catch{}
+}
+async function loadRepos(){
+  try{
+    const r = await fetch('/api/repos'); const repos = await r.json();
+    const sel = $('#repo');
+    sel.innerHTML = repos.map(x=>`<option value="${esc(x.key)}">${esc(x.key)}</option>`).join('');
+    const saved = localStorage.getItem('repo'); if(saved && repos.some(x=>x.key===saved)) sel.value = saved;
+    sel.onchange = () => localStorage.setItem('repo', sel.value);
+  }catch{}
+  // agent select: options are static (claude/codex); just remember the last choice
+  const ag = $('#agent'); const savedA = localStorage.getItem('agent');
+  if(savedA && [...ag.options].some(o=>o.value===savedA)) ag.value = savedA;
+  // model select: remembered; only meaningful for claude -> disable for codex
+  const md = $('#model');
+  md.onchange = () => localStorage.setItem('model', md.value);
+  const syncModel = () => { md.disabled = (ag.value !== 'claude'); md.style.opacity = md.disabled ? .5 : 1; };
+  ag.onchange = () => { localStorage.setItem('agent', ag.value); syncModel(); };
+  syncModel();
+  const pr = $('#priority'); const savedP = localStorage.getItem('priority');
+  if(savedP && [...pr.options].some(o=>o.value===savedP)) pr.value = savedP;
+  pr.onchange = () => localStorage.setItem('priority', pr.value);
+}
+async function load(){
+  try{
+    const r = await fetch('/api/sessions'); const data = await r.json();
+    const list = $('#list');
+    window.ANY_IDE = data.some(x => x.ide && x.ide.running);
+    if(!data.length){ list.innerHTML = '<div class="empty">No sessions. Pick a repo and enter a task above.</div>'; return; }
+    // Triage grouping: needs-you (idle) first — by priority then longest waiting — then busy, then done/stopped.
+    const pRank = p => ({p1:0,p2:1,p3:2}[p||'p2']);
+    const needs = data.filter(s => s.status==='running' && (s.attention==='needs_you' || s.attention==='idle'))
+      .sort((a,b) => pRank(a.priority)-pRank(b.priority) || (b.waitingMs||0)-(a.waitingMs||0));
+    const busy  = data.filter(s => s.status==='running' && s.attention==='working')
+      .sort((a,b) => pRank(a.priority)-pRank(b.priority));
+    const rest  = data.filter(s => !needs.includes(s) && !busy.includes(s));
+    const section = (title, arr, cls) => arr.length ? `<div class="sec ${cls}"><h2>${title} <span class="cnt">${arr.length}</span></h2>${arr.map(card).join('')}</div>` : '';
+    list.innerHTML = section('① Needs you', needs, 'sec-need')
+      + section('② Working', busy, 'sec-work')
+      + section('③ Done &amp; stopped', rest, 'sec-rest');
+    // Focus-nudge: you're attached to a session while a HIGHER-priority one needs you.
+    const nudgeEl = $('#nudge');
+    const here = data.find(s => s.attached);
+    const waiting = needs.filter(s => !s.attached);
+    const topWaiting = waiting[0];   // needs[] is already priority-sorted
+    if(here && topWaiting && pRank(topWaiting.priority) < pRank(here.priority)){
+      nudgeEl.hidden = false;
+      nudgeEl.innerHTML = `⚠ <b>${esc(topWaiting.priority.toUpperCase())}</b> "${esc(topWaiting.name)}" is waiting for you`
+        + `${topWaiting.recap ? ` — <span class="muted">${esc(topWaiting.recap.slice(0,80))}</span>` : ''}`
+        + ` &nbsp; <span class="muted">(you are now in ${esc(here.priority.toUpperCase())} "${esc(here.name)}")</span>`
+        + ` <button data-attach="${esc(topWaiting.id)}">⧉ attach</button>`;
+      nudgeEl.querySelectorAll('[data-attach]').forEach(b => b.onclick = () => copyAttach(b.getAttribute('data-attach'), b));
+    } else { nudgeEl.hidden = true; nudgeEl.innerHTML=''; }
+    notifyNeedsYou(data);
+    list.querySelectorAll('[data-prio]').forEach(sel => sel.onchange = () => setPriority(sel.getAttribute('data-prio'), sel.value, sel));
+    list.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => remove(b.getAttribute('data-rm')));
+    list.querySelectorAll('[data-attach]').forEach(b => b.onclick = () => copyAttach(b.getAttribute('data-attach'), b));
+    list.querySelectorAll('[data-resume]').forEach(b => b.onclick = () => resume(b.getAttribute('data-resume'), b));
+    list.querySelectorAll('[data-review]').forEach(b => b.onclick = () => review(b.getAttribute('data-review'), b));
+    list.querySelectorAll('[data-idestart]').forEach(b => b.onclick = () => startIde(b.getAttribute('data-idestart'), b));
+    list.querySelectorAll('[data-idestop]').forEach(b => b.onclick = () => stopIde(b.getAttribute('data-idestop'), b));
+    list.querySelectorAll('[data-cp]').forEach(b => b.onclick = () => copyText(b.getAttribute('data-cp'), b));
+  }catch(e){ $('#list').innerHTML = '<div class="empty">Cannot reach the API — is the server running / is the tunnel open?</div>'; }
+}
+async function copyText(text, btn){
+  try { await navigator.clipboard.writeText(text); }
+  catch { const ta=document.createElement('textarea'); ta.value=text; document.body.appendChild(ta); ta.select(); try{document.execCommand('copy');}catch{} ta.remove(); }
+  if(btn){ const o=btn.textContent; btn.textContent='✓'; setTimeout(()=>{btn.textContent=o;},1200); }
+}
+async function copyAttach(sid, btn){
+  const cmd = META.sshHost ? `ssh -t ${META.sshHost} 'tmux attach -t ${sid}'` : `tmux attach -t ${sid}`;
+  return copyText(cmd, btn);
+}
+async function setPriority(sid, priority, sel){
+  if(sel){ sel.className = 'prio prio-'+priority; }
+  try { await fetch('/api/sessions/'+encodeURIComponent(sid)+'/priority', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({priority})}); }
+  catch { alert('saving priority failed'); }
+  load();   // re-sort the triage sections
+}
+function renderDigest(d){
+  const el = $('#digest'); if(!el) return;
+  if(!d || !d.enabled){ el.hidden = true; return; }
+  const items = d.items || [];
+  const when = d.at ? new Date(d.at).toLocaleTimeString() : '—';
+  const rows = items.length
+    ? items.map(it => `<div class="drow"><span class="prio prio-${esc(it.priority||'p2')}">${esc((it.priority||'p2').toUpperCase())}</span> `
+        + `<b>${esc(it.name||it.sid)}</b> — ${esc(it.why||'')}${it.next?` <span class="muted">→ ${esc(it.next)}</span>`:''}</div>`).join('')
+    : `<div class="muted">No sessions need you right now.</div>`;
+  el.hidden = false;
+  el.innerHTML = `<div class="drow head"><b>Attention</b> <span class="muted">(${esc(d.model||'')}, ${when})</span>`
+    + `<button id="digestRefresh" title="refresh the digest (costs one cheap model call)">↻ refresh</button></div>${rows}`;
+  $('#digestRefresh').onclick = async (e) => { e.target.disabled=true; e.target.textContent='…'; try{ const r=await fetch('/api/digest',{method:'POST'}); renderDigest(await r.json()); }catch{} };
+}
+async function loadDigest(){ try{ const r=await fetch('/api/digest'); renderDigest(await r.json()); }catch{} }
+let recoverOpen = false;
+function fmtAgo(ms){ if(!ms) return ''; const d=Math.floor((Date.now()-ms)/86400000); if(d>0) return d+'d ago'; const h=Math.floor((Date.now()-ms)/3600000); return h>0? h+'h ago':'recent'; }
+async function loadRecover(){
+  try{
+    const r = await fetch('/api/recoverable'); const items = await r.json();
+    const el = $('#recover'); if(!Array.isArray(items) || !items.length){ el.hidden = true; return; }
+    el.hidden = false;
+    const head = `<div class="rrow head"><b>🗄 Restore</b> <span class="cnt">${items.length}</span>`
+      + `<button id="recToggle">${recoverOpen?'hide':'show deleted sessions'}</button></div>`;
+    const rows = recoverOpen ? items.map(it => `<div class="rrow">`
+      + `<span class="repo">${esc(it.repo)}</span> <span class="name">${esc(it.name)}</span>`
+      + `<span class="pill">${esc(it.branch||'?')}</span>`
+      + (it.hasHistory?'<span class="pill" title="preserved conversation available">💬 context</span>':'<span class="pill" title="no preserved conversation">no context</span>')
+      + `<span class="muted" style="font-size:12px">${esc(fmtAgo(it.lastActive))}</span>`
+      + `<button class="rrestore" data-restore="${esc(it.sid)}">↩ restore</button>`
+      + (it.snippet?`<div class="recap">${esc(it.snippet)}</div>`:'') + `</div>`).join('') : '';
+    el.innerHTML = head + rows;
+    $('#recToggle').onclick = () => { recoverOpen = !recoverOpen; loadRecover(); };
+    el.querySelectorAll('[data-restore]').forEach(b => b.onclick = () => restoreSession(b.getAttribute('data-restore'), b));
+  }catch{ $('#recover').hidden = true; }
+}
+async function restoreSession(sid, btn){
+  if(!confirm(`Restore session "${sid}"? The worktree is recreated and the preserved conversation resumed.`)) return;
+  if(btn){ btn.disabled=true; btn.textContent='restoring…'; }
+  try{ const r = await fetch('/api/sessions/restore', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({sid})});
+    const j = await r.json(); if(j.error){ alert(j.error); if(btn){btn.disabled=false;btn.textContent='↩ restore';} return; }
+  }catch{ alert('restore failed'); if(btn){btn.disabled=false;btn.textContent='↩ restore';} return; }
+  loadRecover(); load();
+}
+// Browser notification when a p1 session newly needs you (permission-gated, deduped per sid).
+const notified = new Set();
+function notifyNeedsYou(data){
+  if(!('Notification' in window) || Notification.permission!=='granted') return;
+  for(const s of data){
+    if(s.status==='running' && s.attention==='needs_you' && s.priority==='p1' && !s.attached){
+      if(!notified.has(s.id)){ notified.add(s.id); new Notification('P1 waiting for you: '+s.name, { body: (s.recap||'').slice(0,120) }); }
+    } else notified.delete(s.id);
+  }
+}
+async function startIde(sid, btn){
+  if(btn){ btn.disabled = true; btn.textContent = 'starting…'; }
+  try {
+    const r = await fetch('/api/sessions/'+encodeURIComponent(sid)+'/ide', {method:'POST'});
+    const j = await r.json();
+    if(j.error){ alert(j.error); }
+  } catch { alert('IDE start failed'); }
+  // the connect link appears in the card (⌨ IDE) after ~30-90s; refresh a few times to catch it
+  [3000,10000,25000,50000,80000].forEach(ms => setTimeout(load, ms));
+  load();
+}
+async function stopIde(sid, btn){
+  if(btn){ btn.disabled = true; btn.textContent = 'stopping…'; }
+  try { await fetch('/api/sessions/'+encodeURIComponent(sid)+'/ide/stop', {method:'POST'}); } catch {}
+  load();
+}
+async function resume(sid, btn){
+  if(btn){ btn.disabled=true; btn.textContent='resuming…'; }
+  await fetch('/api/sessions/'+encodeURIComponent(sid)+'/resume', {method:'POST'});
+  setTimeout(load, 1500);
+}
+async function review(sid, btn){
+  const sel = document.querySelector('[data-reviewscope="'+sid+'"]');
+  const scope = sel ? sel.value : 'working';
+  if(btn){ btn.disabled=true; btn.textContent='starting review…'; }
+  try{
+    const r = await fetch('/api/sessions/'+encodeURIComponent(sid)+'/review', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({scope})});
+    const j = await r.json();
+    if(j.error){ alert(j.error); if(btn){ btn.disabled=false; btn.textContent='🔍 review'; } return; }
+  }catch{ alert('starting the review failed'); if(btn){ btn.disabled=false; btn.textContent='🔍 review'; } return; }
+  // the review session appears shortly as its own card (wt/<repo>/<name>-review) — refresh
+  [1500,5000,12000].forEach(ms=>setTimeout(load, ms));
+}
+async function remove(sid){
+  if(!confirm(`Delete session "${sid}"?`)) return;
+  let r = await fetch('/api/sessions/'+encodeURIComponent(sid), {method:'DELETE'});
+  if(r.status===409){
+    const j = await r.json();
+    const files = (j.dirty && j.dirty.length)
+      ? `\n\nUncommitted files:\n${j.dirty.join('\n')}`
+      : '';
+    if(confirm(`${j.error||'Cannot delete safely'}.${files}\n\nForce delete (unsaved work is lost)?`))
+      r = await fetch('/api/sessions/'+encodeURIComponent(sid)+'?force=1', {method:'DELETE'});
+    else return;
+  }
+  load();
+}
+$('#newForm').onsubmit = async (e) => {
+  e.preventDefault(); $('#newErr').textContent='';
+  const repo = $('#repo').value; const agent = $('#agent').value; const v = $('#prompt').value.trim();
+  const model = (agent === 'claude') ? $('#model').value : '';   // model only applies to claude
+  const priority = $('#priority').value;
+  if(!repo){ $('#newErr').textContent='pick a repo'; return; }
+  if(!v) return;
+  const btn = e.target.querySelector('button.primary'); btn.disabled=true; btn.textContent='Creating…';
+  const r = await fetch('/api/sessions', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({repo, agent, model, priority, prompt:v})});
+  const j = await r.json(); btn.disabled=false; btn.textContent='+ New session';
+  if(j.error){ $('#newErr').textContent = j.error; return; }
+  $('#prompt').value=''; load();
+};
+$('#prompt').addEventListener('keydown', (e) => { if((e.metaKey||e.ctrlKey) && e.key==='Enter') $('#newForm').requestSubmit(); });
+
+let timer = null;
+function applyRate(){
+  const ms = Number($('#rate').value); localStorage.setItem('rate', String(ms));
+  if(timer) clearInterval(timer); timer = setInterval(() => { load(); loadRecover(); }, ms);
+}
+$('#rate').onchange = applyRate;
+$('#refresh').onclick = load;
+
+(function init(){
+  const savedRate = localStorage.getItem('rate'); if(savedRate) $('#rate').value = savedRate;
+  if('Notification' in window && Notification.permission==='default'){ try{ Notification.requestPermission(); }catch{} }
+  loadMeta().then(loadRepos); load(); applyRate(); loadDigest(); loadRecover();
+})();
+</script>
+</body>
+</html>

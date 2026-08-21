@@ -1,0 +1,21 @@
+# Systemd unit template for the wt dev-sessions dashboard.
+# provision/99-dashboard.sh renders this to /etc/systemd/system/wt-dashboard.service,
+# substituting @USER@, @HOME@, @DASHBOARD_DIR@, @CONFIG_DIR@ and @NODE@.
+# All feature configuration lives in @CONFIG_DIR@/dashboard.env (generated from
+# ~/.config/wt/config.yaml by lib/config/generate-env.sh) — edit the config and
+# regenerate instead of editing this unit.
+[Unit]
+Description=wt dev-sessions dashboard
+After=network.target
+
+[Service]
+User=@USER@
+WorkingDirectory=@DASHBOARD_DIR@
+Environment=HOME=@HOME@
+EnvironmentFile=@CONFIG_DIR@/dashboard.env
+ExecStart=@NODE@ @DASHBOARD_DIR@/server.js
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
