@@ -12,11 +12,6 @@ description: >-
 
 # Dev sessions on the dev VM
 
-> **Placeholder:** `<vm-host>` below is the SSH alias/hostname of your dev VM as
-> reachable from this machine (e.g. an entry in `~/.ssh/config`; for a Lima VM
-> the auto-generated `lima-<instance>` alias). Replace it accordingly — or, if
-> you keep a copy of this skill, hardcode your alias here once.
-
 Orchestrate parallel feature development on the dev VM, across the repos in its
 `wt` config. Each "session" is a git worktree at `~/wt/<repo>/<name>` on its own
 `feat/<name>` branch (from the repo's default branch), running an AI agent inside
@@ -25,27 +20,46 @@ labelled `wt/<repo>/<name>`; because it's interactive (not headless), it can pin
 the user via Remote Control with targeted questions about the feature it's
 building. Sessions can also run **Codex** instead (`--agent codex`).
 
-The VM provides shell helpers (wired into its `~/.bashrc`): `wt-new`, `wt-ls`,
+The guest provides shell helpers (wired into its `~/.bashrc`): `wt-new`, `wt-ls`,
 `wt-rm`, `wt-resume`, `wt-review`, `wt-repos` (plus `wt-ide`, `wt-env`). This
-skill drives them over SSH.
+skill drives them through a transport (below).
 
-## Critical: how to call the helpers
+## Transport: pick ONE mode, then use `RUN` everywhere
 
-The helpers live in the VM's interactive `~/.bashrc`, which is skipped for
-non-interactive shells. So you MUST invoke them through an **interactive** bash:
+The helpers live in the guest's interactive `~/.bashrc`, which non-interactive
+shells skip — so **every** invocation goes through `bash -ic "<helper>"`, no
+matter the transport. Determine once where you (the orchestrator) run relative
+to the guest, and from then on read every `RUN <helper command>` in this skill
+as the corresponding concrete form:
+
+| mode | you run... | `RUN <cmd>` means |
+|---|---|---|
+| **LOCAL** | inside the guest itself (e.g. a session in the Ubuntu distro/VM, outside `~/wt`) | `bash -ic "<cmd>"` |
+| **SSH** | on macOS with a Lima VM, or against any remote VM | `ssh <vm-host> 'bash -ic "<cmd>"'` |
+| **WSL** | natively on Windows, guest is a WSL2 distro | `wsl.exe -d <distro> -- bash -ic "<cmd>"` |
+
+`<vm-host>` is the VM's SSH alias/hostname as reachable from this machine (for a
+Lima VM the auto-generated `lima-<instance>` alias); `<distro>` is the WSL2
+distro name (`wsl.exe -l`). A plain `ssh <vm-host> '<helper>'` (without
+`bash -ic`) fails with "command not found".
+
+**On Windows the orchestrator can live in two places:** natively on Windows
+(mode WSL — note that native Claude Code only has a Bash tool when Git for
+Windows is installed; otherwise you're composing these commands in PowerShell,
+see the quoting notes below), or simply inside the Ubuntu distro outside the
+worktrees (mode LOCAL — no `wsl.exe`, no ssh).
+
+**PowerShell quoting (WSL mode):** the double-quoted `bash -ic "<cmd>"` form
+above works unchanged from PowerShell as long as `<cmd>` contains no nested
+double quotes — which is exactly why tasks are passed base64-encoded (see
+"Dispatch a task"). Avoid embedding raw quotes/newlines in `<cmd>`.
+
+First, confirm the guest is up:
 
 ```bash
-ssh <vm-host> 'bash -ic "<helper command>"'
-```
-
-`bash -ic` is required — a plain `ssh <vm-host> '<helper>'` fails with
-"command not found".
-
-First, confirm the VM is up (on macOS/Lima: if this errors, tell the user to run
-`limactl start <instance>`; on Windows/WSL2 the distro starts on first use):
-
-```bash
-ssh <vm-host> true   # or: limactl list <instance> --format '{{.Status}}'
+RUN true
+# if that errors — macOS/Lima: tell the user to run `limactl start <instance>`;
+# Windows/WSL2: the distro starts automatically on first `wsl.exe` use.
 ```
 
 ## Choosing the repo (always explicit)
@@ -56,7 +70,7 @@ wrong repo (e.g. a front-end issue logged in the backend repo). If the user
 didn't say which repo, ask. List the configured repos with:
 
 ```bash
-ssh <vm-host> 'bash -ic "wt-repos"'   # key -> owner/repo
+RUN wt-repos   # key -> owner/repo
 ```
 
 ## Naming
@@ -103,20 +117,32 @@ wt-new <repo> <name> [--agent claude|codex] [--auto] [--deny-post]
 
 ### List running sessions (all repos)
 ```bash
-ssh <vm-host> 'bash -ic "wt-ls"'
+RUN wt-ls
 ```
 
 ### New interactive session (user drives it)
 ```bash
-ssh <vm-host> 'bash -ic "wt-new <repo> <name>"'
+RUN wt-new <repo> <name>
 ```
 
 ### Dispatch a task (session starts working, can ask via Remote Control)
-Encode the task as base64 to avoid all shell-quoting problems, then dispatch:
+Encode the task as base64 to avoid all shell-quoting problems, then dispatch.
+From bash (LOCAL/SSH, or WSL mode with Git for Windows' bash):
 ```bash
 b64=$(printf '%s' "FULL TASK DESCRIPTION HERE" | base64 | tr -d '\n')
-ssh <vm-host> "bash -ic 'wt-new <repo> <name> --task-b64 $b64'"
+RUN wt-new <repo> <name> --task-b64 $b64
 ```
+From PowerShell (WSL mode, native Windows without a Bash tool):
+```powershell
+$task = @'
+FULL TASK DESCRIPTION HERE
+'@
+$b64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($task))
+wsl.exe -d <distro> -- bash -ic "wt-new <repo> <name> --task-b64 $b64"
+```
+(base64 contains no quoting-hostile characters, so interpolating `$b64` inside
+the double-quoted command is safe in both shells.)
+
 Write a clear, self-contained task (what to build, context, constraints) — it is
 the session's opening prompt. The first time a repo is used it is cloned on
 demand (can take a bit). To dispatch several features in parallel, repeat the
@@ -127,7 +153,7 @@ After a VM stop/restart the tmux process is gone but the worktree + agent
 conversation history remain. Re-open it (Claude `--continue` + Remote Control, or
 Codex `resume --last`), with the same agent + flags it was created with:
 ```bash
-ssh <vm-host> 'bash -ic "wt-resume <repo> <name>"'
+RUN wt-resume <repo> <name>
 ```
 
 ### Review the work currently in a session
@@ -138,9 +164,9 @@ session) against the merge-base with the repo's default branch, gets a second
 opinion from **Codex via MCP**, consolidates, and **reports only** (posts nothing;
 runs `--auto --deny-post`). Findings come back via Remote Control.
 ```bash
-ssh <vm-host> 'bash -ic "wt-review <repo> <name>"'                    # scope working (default)
-ssh <vm-host> 'bash -ic "wt-review <repo> <name> --scope committed"'  # only committed diff vs base
-ssh <vm-host> 'bash -ic "wt-review <repo> <name> --scope all"'        # + untracked files
+RUN wt-review <repo> <name>                    # scope working (default)
+RUN wt-review <repo> <name> --scope committed  # only committed diff vs base
+RUN wt-review <repo> <name> --scope all        # + untracked files
 ```
 Scope: `committed` = only committed diff; `working` (default) = committed + uncommitted
 tracked changes; `all` = + untracked files. It creates a throwaway session
@@ -148,13 +174,13 @@ tracked changes; `all` = + untracked files. It creates a throwaway session
 
 ### Tear down a session
 ```bash
-ssh <vm-host> 'bash -ic "wt-rm <repo> <name>"'      # safe: refuses if unmerged/dirty
-ssh <vm-host> 'bash -ic "wt-rm <repo> <name> -f"'   # force (discards unsaved work) — confirm first
+RUN wt-rm <repo> <name>      # safe: refuses if unmerged/dirty
+RUN wt-rm <repo> <name> -f   # force (discards unsaved work) — confirm first
 ```
 
 ### Other helpers
 - `wt-ide <repo> <name>` — start the configured IDE backend for the worktree
-  (see `ide.backend` in the VM's wt config; off by default).
+  (see `ide.backend` in the guest's wt config; off by default).
 - `wt-env <repo> [name]` — show/seed gitignored local config (`.env*`, `appsettings.*.json`).
 
 ## After dispatching, tell the user
@@ -163,7 +189,8 @@ ssh <vm-host> 'bash -ic "wt-rm <repo> <name> -f"'   # force (discards unsaved wo
 - That each Claude session may **ask questions via Remote Control** about its feature —
   watch the Remote Control app/notifications. (Codex sessions have no Remote Control;
   the user attaches to drive them.)
-- They can also attach in the VM: `ssh <vm-host>` then
+- They can also attach in the guest: open a guest shell (`ssh <vm-host>`,
+  `wsl.exe -d <distro>`, or you're already there in LOCAL mode) and run
   `tmux attach -t <repo>--<name>` (detach with `Ctrl-b d`), or use the dashboard's
   copy-attach button on the configured dashboard port (default
   http://localhost:7300).
@@ -184,13 +211,13 @@ about auto-review sessions, this is where `review-<n>` sessions come from.
 
 ## Teaching sessions project conventions
 
-Sessions read `~/.claude/CLAUDE.md` in the VM at startup — that is where project
-conventions live (e.g. "no CHANGELOG.md; release notes come from the PR title").
-When the user reports a convention, append it to the VM's `~/.claude/CLAUDE.md`
-(effective for new sessions) AND mirror it into whatever seeds that file on a
-rebuild (typically the overlay's post-provision hook), then commit there.
-Already-running sessions won't see new rules — tell the user to correct those via
-Remote Control or restart them.
+Sessions read `~/.claude/CLAUDE.md` in the guest at startup — that is where
+project conventions live (e.g. "no CHANGELOG.md; release notes come from the PR
+title"). When the user reports a convention, append it to the guest's
+`~/.claude/CLAUDE.md` (effective for new sessions) AND mirror it into whatever
+seeds that file on a rebuild (typically the overlay's post-provision hook), then
+commit there. Already-running sessions won't see new rules — tell the user to
+correct those via Remote Control or restart them.
 
 ## Guardrails
 
