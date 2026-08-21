@@ -1,0 +1,93 @@
+# Lima VM template for worktree-vm — rendered by platform/lima/up.sh from your
+# ~/.config/wt/config.yaml. Do not edit the rendered copy; edit the config (or
+# this template) and re-run up.sh.
+#
+# Design:
+# - Apple Virtualization.framework (vz) for near-native speed.
+# - Code lives on the VM's NATIVE filesystem (clone inside the VM) -> no slow
+#   macOS bind-mount. The host home is mounted read-only only for convenience.
+# - Everything else (docker, node, gh, agents, tmux, stacks, dashboard) is
+#   provisioned by the repo's platform-agnostic install.sh, so this file stays
+#   platform facts only.
+
+vmType: "vz"
+
+cpus: @CPUS@
+memory: "@MEMORY@"
+disk: "@DISK@"
+
+images:
+  # Ubuntu 24.04 LTS (Noble); image chosen for the HOST architecture by up.sh.
+  - location: "@IMAGE_LOCATION@"
+    arch: "@IMAGE_ARCH@"
+
+mountType: "virtiofs"
+mounts:
+  - location: "~"
+    writable: false   # read-only: copy things out if needed; real work lives on the VM disk
+
+@ADDITIONAL_DISKS@
+ssh:
+  loadDotSSHPubKeys: true   # so plain `ssh` can log in with your host keys
+
+# Forward the app ports from the VM to the host so you can open them in a host
+# browser. The dashboard port is always included; the rest comes from `ports:`
+# in the config.
+portForwards:
+@PORT_FORWARDS@
+
+provision:
+  # ---- minimal bootstrap (runs as root): git for the clone below --------------
+  - mode: system
+    script: |
+      #!/bin/bash
+      set -eu
+      export DEBIAN_FRONTEND=noninteractive
+      command -v git >/dev/null || { apt-get update && apt-get install -y --no-install-recommends git ca-certificates; }
+
+  # ---- get the worktree-vm repo onto the VM's native disk ---------------------
+  # Prefer the host checkout (visible via the read-only home mount at the same
+  # path) so the guest tracks exactly the ref you have checked out; fall back to
+  # a public clone when the checkout is outside the mounted home.
+  - mode: user
+    script: |
+      #!/bin/bash
+      set -eu
+      SRC="@REPO_HOST_DIR@"
+      DST="$HOME/worktree-vm"
+      if [ ! -d "$DST/.git" ]; then
+        if [ -d "$SRC/.git" ]; then git clone "$SRC" "$DST"
+        else git clone "@REPO_URL@" "$DST"; fi
+      else
+        git -C "$DST" pull --ff-only || true
+      fi
+
+@PROVISION_DATA_DISK@
+  # ---- seed the guest config from the host config once, then provision --------
+  - mode: user
+    script: |
+      #!/bin/bash
+      set -eu
+      mkdir -p "$HOME/.config/wt"
+      if [ ! -f "$HOME/.config/wt/config.yaml" ] && [ -f "@HOST_CONFIG@" ]; then
+        cp "@HOST_CONFIG@" "$HOME/.config/wt/config.yaml"
+        echo "seeded guest config from @HOST_CONFIG@"
+      fi
+      bash "$HOME/worktree-vm/install.sh"
+
+message: |
+  worktree-vm ready. Open a shell with `limactl shell @INSTANCE@` (or `ssh lima-@INSTANCE@`).
+
+  One-time auth (interactive, stays on the VM, never committed):
+    1. gh auth login          # GitHub (clone/PRs)
+    2. claude                 # log in to Claude Code, then Ctrl-C
+    3. codex login            # only for --agent codex; on a headless VM tunnel the
+                              # OAuth callback: ssh -t -L 1455:127.0.0.1:1455 lima-@INSTANCE@ 'codex login'
+
+  Start a parallel dev session (clones the repo on demand to ~/repos/<key>,
+  makes a worktree at ~/wt/<key>/<name>, launches the chosen AI agent in tmux):
+    wt-repos                  # list configured repos
+    wt-new <repo> <name> "optional task"
+    wt-ls                     # overview;  wt-resume / wt-rm / wt-env / wt-help
+
+  Dashboard: http://localhost:@DASH_PORT@ (port-forwarded).

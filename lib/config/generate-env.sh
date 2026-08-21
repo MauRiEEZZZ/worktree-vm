@@ -31,6 +31,7 @@ ATTENTION_NEEDS_RE=""
 ATTENTION_DONE_RE=""
 IDE_BACKEND=none
 IDE_PORT_BASE=6000
+IDE_RIDER_VERSION=2026.1.3
 SECRETS_SRC=""
 SESSIONS_DIR="$HOME/.wt-sessions"
 HOOKS_DIR="$HOME/.config/wt/hooks"
@@ -49,7 +50,7 @@ if [ -f "$CONFIG_FILE" ]; then
       github.review_owner)    REVIEW_OWNER="$val" ;;
       github.review_model)    REVIEW_MODEL="$val" ;;
       agents.default)         AGENT_DEFAULT="$val" ;;
-      agents.model_choices.*) MODEL_CHOICES="${MODEL_CHOICES:+$MODEL_CHOICES }$val" ;;
+      agents.model_choices.[0-9]*) MODEL_CHOICES="${MODEL_CHOICES:+$MODEL_CHOICES }$val" ;;
       dashboard.port)         DASHBOARD_PORT="$val" ;;
       dashboard.deploy_url_regex) DEPLOY_URL_REGEX="$val" ;;
       dashboard.ssh_host)     SSH_HOST="$val" ;;
@@ -57,11 +58,12 @@ if [ -f "$CONFIG_FILE" ]; then
       dashboard.attention.done_re)  ATTENTION_DONE_RE="$val" ;;
       ide.backend)            IDE_BACKEND="$val" ;;
       ide.port_base)          IDE_PORT_BASE="$val" ;;
+      ide.rider_version)      IDE_RIDER_VERSION="$val" ;;
       secrets.source)         SECRETS_SRC="$(expand_home "$val")" ;;
       sessions.meta_dir)      SESSIONS_DIR="$(expand_home "$val")" ;;
       hooks.dir)              HOOKS_DIR="$(expand_home "$val")" ;;
-      stacks.*)               STACKS="${STACKS:+$STACKS }$val" ;;
-      ports.*)                FORWARD_PORTS="${FORWARD_PORTS:+$FORWARD_PORTS }$val" ;;
+      stacks.[0-9]*)          STACKS="${STACKS:+$STACKS }$val" ;;
+      ports.[0-9]*)           FORWARD_PORTS="${FORWARD_PORTS:+$FORWARD_PORTS }$val" ;;
     esac
   done < <(wt_yaml_flatten "$CONFIG_FILE")
 fi
@@ -82,6 +84,7 @@ ENV_SH="$WT_CONFIG_DIR/env.sh"
   printf 'export WT_SSH_HOST=%q\n'            "$SSH_HOST"
   printf 'export WT_IDE_BACKEND=%q\n'         "$IDE_BACKEND"
   printf 'export WT_IDE_PORT_BASE=%q\n'       "$IDE_PORT_BASE"
+  printf 'export WT_IDE_RIDER_VERSION=%q\n'   "$IDE_RIDER_VERSION"
   printf 'export WT_SECRETS_SRC=%q\n'         "$SECRETS_SRC"
   printf 'export WT_SESSIONS_DIR=%q\n'        "$SESSIONS_DIR"
   printf 'export WT_HOOKS_DIR=%q\n'           "$HOOKS_DIR"

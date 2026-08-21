@@ -69,6 +69,8 @@ ide:
   backend: none
   # First local port for per-worktree IDE instances (code-server backend).
   port_base: 6000
+  # JetBrains Rider version for the rider backend (downloaded on first use).
+  rider_version: 2026.1.3
 
 secrets:
   # Durable folder holding per-repo gitignored local config (repo-relative
@@ -91,6 +93,20 @@ hooks:
 # dotnet, powershell, azure-cli, pulumi. Empty = none.
 stacks: []
 
-# Extra guest ports your projects need forwarded to the host (informational for
-# the platform recipes; the dashboard port above is always forwarded).
+# Extra guest ports your projects need forwarded to the host. On macOS/Lima
+# these become portForwards (the dashboard port above is always forwarded); on
+# WSL2 no forwarding is needed (localhost forwarding is on by default).
 ports: []
+
+lima:
+  # Only used by platform/lima/up.sh on the macOS host.
+  instance: worktree-vm
+  cpus: 4
+  memory: 8GiB
+  disk: 100GiB
+  # Persistent Lima data disk: survives `limactl delete` + rebuild. up.sh
+  # creates it when missing; the VM bind-mounts ~/wt onto it and symlinks the
+  # durable dirs (~/repos, ~/.claude, ~/.codex, ~/.config/gh, ~/.config/wt,
+  # ~/.azure, plus any clone_paths under your home). Empty = no persistence.
+  data_disk: worktree-data
+  data_disk_size: 60GiB
