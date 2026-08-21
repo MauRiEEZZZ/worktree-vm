@@ -94,6 +94,6 @@ containing `#` or `:`. A leading `~/` in path values expands to `$HOME`.
 | key | default | meaning |
 |---|---|---|
 | `instance` | `worktree-vm` | Lima instance name (ssh alias becomes `lima-<instance>`). |
-| `cpus` / `memory` / `disk` | `4` / `8GiB` / `100GiB` | VM sizing. Baked in at instance creation — changing them needs `limactl delete` + `up.sh` (work survives on the data disk). |
+| `cpus` / `memory` / `disk` | `2` / `4GiB` / `100GiB` | VM sizing (defaults fit a small laptop; 4/8GiB+ recommended for parallel sessions or heavy stacks). Baked in at instance creation — changing them needs `limactl delete` + `up.sh` (work survives on the data disk). The disk is sparse. |
 | `data_disk` | `worktree-data` | persistent Lima data disk name; created by `up.sh` when missing. **Empty = no persistence.** |
 | `data_disk_size` | `60GiB` | size used when creating the data disk. |

@@ -16,6 +16,15 @@ cpus: @CPUS@
 memory: "@MEMORY@"
 disk: "@DISK@"
 
+# Lima's own containerd/nerdctl/rootless-buildkit is OFF: provision/10-docker.sh
+# installs Docker Engine (which brings its own containerd.io package), so Lima's
+# copy would be a second, unused container runtime — costing several minutes of
+# first-boot time (enough to blow Lima's startup window on small machines) plus
+# disk space.
+containerd:
+  system: false
+  user: false
+
 images:
   # Ubuntu 24.04 LTS (Noble); image chosen for the HOST architecture by up.sh.
   - location: "@IMAGE_LOCATION@"

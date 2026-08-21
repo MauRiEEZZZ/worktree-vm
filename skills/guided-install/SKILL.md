@@ -156,6 +156,24 @@ them the dashboard is directly reachable in a Windows browser at
 Remaining user-owned steps to hand over at the end: `gh auth login`, `claude`
 (login, Ctrl-C), `codex login` (only if they'll use Codex).
 
+## Known failure patterns (check these BEFORE concluding a step failed)
+
+- **Lima: `limactl start` exits 1 with "did not receive an event with the
+  running status".** This is a startup-window timeout, NOT a broken install:
+  first-boot provisioning on a slow machine/network can outlast Lima's window
+  while cloud-init keeps running and usually finishes on its own. Do not delete
+  the instance and do not report failure yet. Diagnose:
+
+  ```bash
+  limactl shell <instance> -- cloud-init status      # running = wait; done = it finished; error = read the log
+  limactl shell <instance> -- sudo cat /var/log/cloud-init-output.log | tail -50
+  ```
+
+  On `running`: wait and poll. On `done`: verify Phase 4 directly — the
+  install likely succeeded despite the exit code. Either way, re-running
+  `limactl start <instance>` is safe (provisioning is idempotent) and normally
+  reaches the running state on the second attempt.
+
 ## Failure protocol (this is the whole point of this skill)
 
 When any step fails:

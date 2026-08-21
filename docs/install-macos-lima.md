@@ -46,6 +46,33 @@ creates the persistent data disk if configured and missing, and runs
 everything (docker, node, gh, the agents, tmux, your opt-in stacks, the wt-*
 helpers and the dashboard) — expect several minutes.
 
+### If `limactl start` times out ("did not receive an event with the running status")
+
+On slower machines or networks, first-boot provisioning can outlast Lima's
+startup window, and `limactl start` gives up with that message and exit 1. The
+VM is usually **not broken — it is still provisioning**: cloud-init keeps
+running in the background and typically finishes on its own. Diagnose, don't
+delete:
+
+```bash
+limactl shell <instance> -- cloud-init status   # "running" = still provisioning, wait;
+                                                # "done" = it finished after the timeout;
+                                                # "error" = look at the log below
+limactl shell <instance> -- sudo cat /var/log/cloud-init-output.log | tail -50
+```
+
+Re-running `limactl start <instance>` is **safe** — all provisioning here is
+idempotent, so it simply re-runs/completes the steps and this time reaches the
+running state.
+
+### Sizing (honest minimums)
+
+The defaults (2 cpus / 4 GiB) are the realistic floor: enough for the base
+install, the dashboard, and a couple of agent sessions on a small laptop. For
+several parallel sessions, the `dotnet` stack, or docker-heavy dev loops, give
+it 4 cpus / 8 GiB or more in the `lima:` config section. The 100 GiB disk is
+sparse — it only occupies what's actually used.
+
 ## 4. One-time auth (inside the VM)
 
 ```bash

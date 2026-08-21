@@ -25,9 +25,12 @@ if [ ! -f "$CONFIG" ]; then
 fi
 
 # ---- defaults + config -------------------------------------------------------
+# Defaults sized for a small laptop (they must boot within Lima's startup
+# window there); raise them in the config for heavier stacks — see
+# docs/install-macos-lima.md for honest minimums.
 INSTANCE=worktree-vm
-CPUS=4
-MEMORY=8GiB
+CPUS=2
+MEMORY=4GiB
 DISK=100GiB
 DATA_DISK=worktree-data
 DATA_DISK_SIZE=60GiB

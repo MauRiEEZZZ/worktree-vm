@@ -101,9 +101,11 @@ ports: []
 lima:
   # Only used by platform/lima/up.sh on the macOS host.
   instance: worktree-vm
-  cpus: 4
-  memory: 8GiB
-  disk: 100GiB
+  # Defaults fit a small laptop; several parallel agent sessions (or the dotnet
+  # stack + docker-heavy dev) are happier with 4 cpus / 8GiB or more.
+  cpus: 2
+  memory: 4GiB
+  disk: 100GiB   # sparse — only actually-used space is allocated
   # Persistent Lima data disk: survives `limactl delete` + rebuild. up.sh
   # creates it when missing; the VM bind-mounts ~/wt onto it and symlinks the
   # durable dirs (~/repos, ~/.claude, ~/.codex, ~/.config/gh, ~/.config/wt,
