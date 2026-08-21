@@ -63,6 +63,18 @@ wt-new() {
   _wt_flags_set "$sid" "$([ "$auto" = 1 ] && echo -n 'auto ')$([ "$denypost" = 1 ] && echo -n 'denypost')"  # so wt-resume relaunches the same way
   _wt_model_set "$sid" "$model"   # remember the model override (if any) for resume
   [ -n "$priority" ] && _wt_priority_set "$sid" "$priority"   # optional starting priority (editable later on the dashboard)
+  # Session metadata, same shape the dashboard writes: without it, wt-rm's
+  # tombstone has nothing to archive and a CLI-created session can't be restored
+  # with fidelity (branch/agent/model/task). Never overwrite an existing file —
+  # dashboard-created sessions already wrote a richer one (source URL fields).
+  # Best-effort: metadata is a convenience, never a reason for wt-new to fail.
+  if [ ! -f "$WT_SESSIONS_DIR/$sid.json" ]; then
+    mkdir -p "$WT_SESSIONS_DIR" 2>/dev/null || true
+    WT_J_REPO="$key" WT_J_NAME="$name" WT_J_AGENT="$agent" WT_J_AUTO="$auto" WT_J_DENY="$denypost" \
+    WT_J_MODEL="$model" WT_J_PRIORITY="${priority:-p2}" WT_J_BRANCH="$branch" WT_J_TASK="$task" \
+    node -e 'const e=process.env,fs=require("fs");const j={repo:e.WT_J_REPO,name:e.WT_J_NAME,agent:e.WT_J_AGENT,auto:e.WT_J_AUTO==="1",denyPost:e.WT_J_DENY==="1",model:e.WT_J_MODEL||"",priority:e.WT_J_PRIORITY||"p2",sourceUrl:null,sourceRepo:null,sourceNumber:null,sourceKind:null,branch:e.WT_J_BRANCH,task:e.WT_J_TASK||null,createdAt:Date.now()};fs.writeFileSync(process.argv[1],JSON.stringify(j,null,2));' \
+      "$WT_SESSIONS_DIR/$sid.json" 2>/dev/null || true
+  fi
   if [ -n "${WT_NO_LAUNCH:-}" ]; then echo "worktree: $dir  (branch $branch, $basedesc) [no-launch, agent $agent$([ "$auto" = 1 ] && echo -n ', auto')${model:+, model $model}]"; return 0; fi
   # Agent label: "wt/<repo>/<name>" — recognizable + grouped under the wt/ prefix (claude).
   local label="wt/$key/$name"
