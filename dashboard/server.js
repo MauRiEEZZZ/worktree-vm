@@ -132,13 +132,21 @@ function sidOf(key, name) { return `${key}--${name}`; }
 function splitSid(sid) { const i = sid.indexOf('--'); return i < 0 ? null : { key: sid.slice(0, i), name: sid.slice(i + 2) }; }
 
 // --- repo registry (single source of truth = `wt-repos`) -------------------
-let reposCache = null;
+// Cached, but invalidated when the config file's mtime changes — a config edit
+// must show up in /api/repos without a service restart. (The bash side already
+// regenerates its derived env on the same mtime signal, so the wt-repos call
+// re-reads fresh values.)
+const CONFIG_FILE = process.env.WT_CONFIG_FILE || path.join(HOME, '.config', 'wt', 'config.yaml');
+let reposCache = null, reposCacheStamp = null;
+function configStamp() { try { return fs.statSync(CONFIG_FILE).mtimeMs; } catch { return 0; } }
 async function getRepos() {
-  if (reposCache) return reposCache;
+  const stamp = configStamp();
+  if (reposCache && stamp === reposCacheStamp) return reposCache;
   const { out } = await bashi('wt-repos');
   const map = {};
   out.trim().split('\n').forEach(l => { const m = l.trim().match(/^(\S+)\s+(\S+)$/); if (m) map[m[1]] = m[2]; });
-  reposCache = map;
+  // don't cache an empty result (e.g. a transient wt-repos failure) — retry next call
+  if (Object.keys(map).length) { reposCache = map; reposCacheStamp = stamp; }
   return map;
 }
 
