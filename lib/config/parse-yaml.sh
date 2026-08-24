@@ -11,11 +11,24 @@ wt_yaml_flatten() {
   awk '
     function trim(s) { gsub(/^[[:space:]]+|[[:space:]]+$/, "", s); return s }
     # quoted: take the content up to the matching closing quote (anything after,
-    # e.g. a trailing comment, is dropped). Unquoted: strip a trailing comment.
-    function clean(v,   m) {
+    # e.g. a trailing comment, is dropped). Single-quoted values honour YAML
+    # doubled-quote escaping ('' = one literal quote) — regexes and other
+    # backslash-heavy values belong in single quotes, and they may need an
+    # apostrophe. Unquoted: strip a trailing comment. (\047 = single quote.)
+    function clean(v,   m, out, rest) {
       v = trim(v)
       if (v ~ /^"/)      { m = index(substr(v, 2), "\""); return m ? substr(v, 2, m - 1) : substr(v, 2) }
-      if (v ~ /^'\''/)   { m = index(substr(v, 2), "'\''"); return m ? substr(v, 2, m - 1) : substr(v, 2) }
+      if (v ~ /^\047/) {
+        rest = substr(v, 2); out = ""
+        while (1) {
+          m = index(rest, "\047")
+          if (m == 0) { out = out rest; break }
+          out = out substr(rest, 1, m - 1)
+          if (substr(rest, m + 1, 1) == "\047") { out = out "\047"; rest = substr(rest, m + 2) }
+          else break
+        }
+        return out
+      }
       sub(/[[:space:]]#.*$/, "", v)
       return trim(v)
     }
