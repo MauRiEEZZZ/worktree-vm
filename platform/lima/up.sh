@@ -85,8 +85,19 @@ PROVISION_DATA_DISK=""
 if [ -n "$DATA_DISK" ]; then
   ADDITIONAL_DISKS="# Persistent data disk — survives \`limactl delete\` + rebuild.${NL}additionalDisks:${NL}  - name: \"$DATA_DISK\"${NL}"
   PROVISION_DATA_DISK="  # ---- persistent data disk: bind ~/wt + symlink durable dirs (see data-disk.sh) ----${NL}  - mode: user${NL}    script: |${NL}      #!/bin/bash${NL}      set -eu${NL}      export WT_DATA_MOUNT=\"/mnt/lima-$DATA_DISK\"${NL}      export WT_DATA_EXTRA=\"$(echo "$EXTRA_LINKS" | sed 's/^ *//')\"${NL}      bash \"\$HOME/worktree-vm/platform/lima/data-disk.sh\"${NL}"
-  limactl disk ls -q 2>/dev/null | grep -qx "$DATA_DISK" \
-    || { echo "creating Lima data disk '$DATA_DISK' ($DATA_DISK_SIZE)"; limactl disk create "$DATA_DISK" --size "$DATA_DISK_SIZE"; }
+  # Existence check via --json: `limactl disk ls` does NOT support -q (unlike
+  # `limactl list`), and an earlier `-q 2>/dev/null` variant swallowed exactly
+  # that hard error — empty output, so up.sh tried to create the disk on every
+  # run and died fatally ("disk already exists") on the second run. Both the
+  # disk and instance checks now lean on --json (one JSON object per line with
+  # a "name" key), and stderr stays VISIBLE: if the listing itself fails we
+  # abort with a clear message instead of guessing.
+  DISKS_JSON="$(limactl disk ls --json)" \
+    || { echo "ERROR: 'limactl disk ls --json' failed — cannot tell whether data disk '$DATA_DISK' exists; not guessing" >&2; exit 1; }
+  if ! printf '%s\n' "$DISKS_JSON" | grep -q "\"name\"[[:space:]]*:[[:space:]]*\"$DATA_DISK\""; then
+    echo "creating Lima data disk '$DATA_DISK' ($DATA_DISK_SIZE)"
+    limactl disk create "$DATA_DISK" --size "$DATA_DISK_SIZE"
+  fi
 fi
 
 # The repo checkout is visible in the guest only when it lives under your home
@@ -128,7 +139,12 @@ echo "rendered $OUT"
 limactl validate "$OUT"
 
 # ---- start ----------------------------------------------------------------------
-if limactl list -q 2>/dev/null | grep -qx "$INSTANCE"; then
+# Same --json existence check as the data disk above (and same rule: never
+# silence stderr on the listing — a swallowed flag error is how the disk check
+# broke).
+INSTANCES_JSON="$(limactl list --json)" \
+  || { echo "ERROR: 'limactl list --json' failed — cannot tell whether instance '$INSTANCE' exists; not guessing" >&2; exit 1; }
+if printf '%s\n' "$INSTANCES_JSON" | grep -q "\"name\"[[:space:]]*:[[:space:]]*\"$INSTANCE\""; then
   echo "instance '$INSTANCE' exists — re-running provisioning (config/template changes to platform facts need: limactl delete $INSTANCE, then up.sh; work survives on the data disk)"
   limactl start "$INSTANCE"
 else
