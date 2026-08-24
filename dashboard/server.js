@@ -41,9 +41,21 @@ const DIGEST = process.env.DIGEST !== '0';                           // feature 
 const DIGEST_MODEL = process.env.DIGEST_MODEL || 'haiku';            // cheap by design (shared model budget)
 const DIGEST_POLL_MS = Number(process.env.DIGEST_POLL_MS) || 0;      // 0 = on-demand only (no auto timer); set e.g. 600000 for 10-min auto
 let lastDigest = { at: null, items: [], running: false };            // cached last result
+// User-supplied regexes must never take the service down: the dashboard is a
+// tool, not a validator. On an invalid value: log which key, fall back to the
+// built-in default, keep running.
+function regexFromEnv(name, fallback) {
+  const v = process.env[name];
+  if (!v) return fallback;
+  try { return new RegExp(v, 'i'); }
+  catch (e) {
+    console.error(`[config] ${name} is not a valid regex (${e.message}); value: ${v} — falling back to the built-in default`);
+    return fallback;
+  }
+}
 // Deploy/preview-URL detection in PR comments (config dashboard.deploy_url_regex).
-// Empty = feature off (no deploy badge, no extra gh calls).
-const DEPLOY_RE = process.env.DEPLOY_RE ? new RegExp(process.env.DEPLOY_RE, 'i') : null;
+// Empty = feature off (no deploy badge, no extra gh calls); invalid = feature off too.
+const DEPLOY_RE = regexFromEnv('DEPLOY_RE', null);
 
 fs.mkdirSync(META_DIR, { recursive: true });
 
@@ -97,13 +109,12 @@ function idleSince(sid, isIdle) {
 //   idle     — idle, unclear (treat as needs-you-lite in the UI)
 // Both regexes are overridable via the config (dashboard.attention.needs_re /
 // done_re -> NEEDS_RE / DONE_RE in the env) for sessions that converse in
-// another language; the built-in defaults match English phrasing.
-const NEEDS_RE = process.env.NEEDS_RE
-  ? new RegExp(process.env.NEEDS_RE, 'i')
-  : /(waiting for|your go|let me know|do you want|would you like|can you|could you|may i|shall i|should i|run !|\brun `|give (me|it)|which|\?\s*$)/i;
-const DONE_RE = process.env.DONE_RE
-  ? new RegExp(process.env.DONE_RE, 'i')
-  : /(no follow-up|nothing (further|else|more)|nothing left|all done|fully done|is done|is complete|completed|finished|wrapped up)/i;
+// another language; the built-in defaults match English phrasing. Invalid
+// overrides warn and fall back to the defaults (see regexFromEnv above).
+const NEEDS_RE = regexFromEnv('NEEDS_RE',
+  /(waiting for|your go|let me know|do you want|would you like|can you|could you|may i|shall i|should i|run !|\brun `|give (me|it)|which|\?\s*$)/i);
+const DONE_RE = regexFromEnv('DONE_RE',
+  /(no follow-up|nothing (further|else|more)|nothing left|all done|fully done|is done|is complete|completed|finished|wrapped up)/i);
 function attentionOf(pane) {
   const lines = (pane || '').split('\n').map(l => l.replace(/\s+$/, ''));
   const nonEmpty = lines.filter(l => l.trim());
