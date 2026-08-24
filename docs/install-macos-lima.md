@@ -105,7 +105,7 @@ copy-attach and port-forward buttons produce ready-to-paste one-liners.
 
 | lives on | examples | survives `limactl delete` |
 |---|---|---|
-| data disk | `~/wt` (worktrees), `~/repos` (clones), `~/.claude`, `~/.codex`, `~/.config/gh`, `~/.config/wt`, `~/.azure`, `~/.wt-meta` (session markers **and** the PR-review watcher's `review-seen.json` ledger), the session-metadata dir from `sessions.meta_dir` (dashboard metadata + restore tombstones), `~/.claude.json` (folder-trust list; persisted by copy, see below) | **yes** |
+| data disk | `~/wt` (worktrees), `~/repos` (clones), `~/.claude`, `~/.codex`, `~/.config/gh`, `~/.config/wt`, `~/.azure`, `~/.wt-meta` (session markers **and** the PR-review watcher's `review-seen.json` ledger), the session-metadata dir from `sessions.meta_dir` (dashboard metadata + restore tombstones), `~/.cache/ms-playwright` (Playwright browsers — ~1.2 GB you don't want to re-download, and without it tests fail after a rebuild with "executable doesn't exist"), `~/.claude.json` (folder-trust list; persisted by copy, see below) | **yes** |
 | VM disk | the OS, installed packages, `~/worktree-vm` (the repo clone) | no — reprovisioned on rebuild |
 
 Why those last three matter: without the session metadata + tombstones nothing

@@ -38,7 +38,13 @@
 set -eu
 
 D="${WT_DATA_MOUNT:?set WT_DATA_MOUNT to the data disk mount point (/mnt/lima-<disk>)}"
-LINKS="${WT_DATA_LINKS:-repos .wt-meta .claude .codex .config/gh .config/wt .azure}"
+#   .cache/ms-playwright: browser binaries at Playwright's DEFAULT cache path —
+#   left off the disk they vanish on rebuild ("Failed to launch firefox because
+#   executable doesn't exist"), and at ~1.2 GB for chromium+firefox re-downloads
+#   are not free. Persisting the default path (instead of introducing a
+#   PLAYWRIGHT_BROWSERS_PATH env var every consumer would need to know) also
+#   lets an ad-hoc `npx playwright install` land on the disk automatically.
+LINKS="${WT_DATA_LINKS:-repos .wt-meta .claude .codex .config/gh .config/wt .azure .cache/ms-playwright}"
 FILES="${WT_DATA_FILES:-.claude.json}"
 EXTRA="${WT_DATA_EXTRA:-}"
 

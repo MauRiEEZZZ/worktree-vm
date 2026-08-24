@@ -25,7 +25,8 @@ Two things WSL2 gives you for free, so the setup is *simpler* than Lima:
   survives reboots and WSL updates. There is nothing to bind-mount or symlink;
   `data-disk.sh` is Lima-only, and everything it exists to protect on Lima
   (worktrees, clones, agent auth, session metadata + tombstones, the `~/.wt-meta`
-  markers and PR-review ledger, the `~/.claude.json` trust list) is just an
+  markers and PR-review ledger, the `~/.claude.json` trust list, the
+  `~/.cache/ms-playwright` browsers of the playwright stack) is just an
   ordinary durable file here — you are not missing a step. (The vhdx does NOT
   survive `wsl --unregister <distro>` — that is the WSL equivalent of throwing
   the machine away, backup first.)
