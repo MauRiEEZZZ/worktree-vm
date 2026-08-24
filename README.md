@@ -70,6 +70,18 @@ wt-ls
 
 Dashboard at <http://localhost:7300> (configurable).
 
+## Verified platforms
+
+Both install paths have been run for real — one per architecture:
+
+| Platform | Arch | Verified | Not yet verified there |
+|---|---|---|---|
+| macOS / Lima (vz), fresh instance | arm64 | `install.sh` exit 0 (1m19s first boot); dashboard + API up; full session lifecycle: `wt-new` → `wt-ls` → `wt-rm` (tombstone) → `wt-restore` back onto the same path/branch; config from a path outside `$HOME` lands correctly in the guest | — |
+| Windows 11 / WSL2 Ubuntu 24.04 | x86_64 | install completed by a first external user **with zero fixes needed**; checklist green: 35 `wt-*` functions loaded, `wt-help`/`wt-repos` correct, `wt-dashboard` service active, `/api/meta` + `/api/sessions` OK, dashboard reachable at `localhost:7300` in a Windows browser without any port forwarding; Docker 29.7.2, Node v24.19.0, gh 2.98.0, tmux 3.4, `claude` and `codex` both installed | the interactive logins (`gh auth login`, `claude`, `codex login`) and the `wt-new`/`wt-ls`/`wt-rm` round trip, which requires gh auth |
+
+Successful runs and any field fixes are tracked in
+[docs/field-notes-wsl.md](docs/field-notes-wsl.md).
+
 ## Docs
 
 - [Install on macOS (Lima)](docs/install-macos-lima.md) — includes the persistent-data-disk scheme
