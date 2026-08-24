@@ -81,7 +81,7 @@ containing `#` or `:`. A leading `~/` in path values expands to `$HOME`.
 
 | key | default | meaning |
 |---|---|---|
-| `meta_dir` | `~/.wt-sessions` | where the dashboard keeps per-session metadata JSON; tombstones of deleted sessions live in `<dir>/archive`. Point at an existing directory when migrating from an older setup. |
+| `meta_dir` | `~/.wt-sessions` | where the dashboard keeps per-session metadata JSON; tombstones of deleted sessions live in `<dir>/archive`. Point at an existing directory when migrating from an older setup. On macOS/Lima this directory is persisted on the data disk automatically (derived from the config, wherever you point it, as long as it is under `~`); on WSL2 it is durable by itself. |
 
 ### `hooks`
 
@@ -95,5 +95,5 @@ containing `#` or `:`. A leading `~/` in path values expands to `$HOME`.
 |---|---|---|
 | `instance` | `worktree-vm` | Lima instance name (ssh alias becomes `lima-<instance>`). |
 | `cpus` / `memory` / `disk` | `2` / `4GiB` / `100GiB` | VM sizing (defaults fit a small laptop; 4/8GiB+ recommended for parallel sessions or heavy stacks). Baked in at instance creation — changing them needs `limactl delete` + `up.sh` (work survives on the data disk). The disk is sparse. |
-| `data_disk` | `worktree-data` | persistent Lima data disk name; created by `up.sh` when missing. **Empty = no persistence.** |
+| `data_disk` | `worktree-data` | persistent Lima data disk name; created by `up.sh` when missing. Persists `~/wt`, `~/repos`, `clone_paths` under `~`, agent/CLI auth (`~/.claude`, `~/.codex`, `~/.config/gh`, `~/.azure`), `~/.config/wt`, `~/.wt-meta` (markers + the PR-review `review-seen.json` ledger), the `sessions.meta_dir` directory, and `~/.claude.json` (by copy). **Empty = no persistence.** |
 | `data_disk_size` | `60GiB` | size used when creating the data disk. |

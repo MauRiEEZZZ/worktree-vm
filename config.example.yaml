@@ -109,6 +109,7 @@ lima:
   # Persistent Lima data disk: survives `limactl delete` + rebuild. up.sh
   # creates it when missing; the VM bind-mounts ~/wt onto it and symlinks the
   # durable dirs (~/repos, ~/.claude, ~/.codex, ~/.config/gh, ~/.config/wt,
-  # ~/.azure, plus any clone_paths under your home). Empty = no persistence.
+  # ~/.azure, ~/.wt-meta, the sessions.meta_dir directory, plus any clone_paths
+  # under your home; ~/.claude.json is persisted by copy). Empty = no persistence.
   data_disk: worktree-data
   data_disk_size: 60GiB

@@ -105,8 +105,22 @@ copy-attach and port-forward buttons produce ready-to-paste one-liners.
 
 | lives on | examples | survives `limactl delete` |
 |---|---|---|
-| data disk | `~/wt` (worktrees), `~/repos` (clones), `~/.claude`, `~/.codex`, `~/.config/gh`, `~/.config/wt`, `~/.azure` | **yes** |
+| data disk | `~/wt` (worktrees), `~/repos` (clones), `~/.claude`, `~/.codex`, `~/.config/gh`, `~/.config/wt`, `~/.azure`, `~/.wt-meta` (session markers **and** the PR-review watcher's `review-seen.json` ledger), the session-metadata dir from `sessions.meta_dir` (dashboard metadata + restore tombstones), `~/.claude.json` (folder-trust list; persisted by copy, see below) | **yes** |
 | VM disk | the OS, installed packages, `~/worktree-vm` (the repo clone) | no — reprovisioned on rebuild |
+
+Why those last three matter: without the session metadata + tombstones nothing
+is restorable with fidelity after a rebuild; without the `review-seen.json`
+ledger the PR-review watcher would **re-spawn a review session for every PR it
+had already handled** — the least obvious consequence; and without the
+`~/.claude.json` trust list every worktree re-prompts for folder trust, which
+hangs exactly the unattended (`--auto`) sessions. `~/.claude.json` is a single
+file that Claude Code rewrites atomically, so it is persisted by **copy**
+(restored on rebuild, refreshed on every `limactl start`) rather than symlinked
+— its loss window is "changes since the last VM start".
+
+(WSL2 users: none of this applies to you — there is no data disk because the
+distro's vhdx is already durable, so all of the above are ordinary durable
+files there.)
 
 One deliberately subtle detail: `~/wt` is a **bind mount**, not a symlink.
 Claude Code keys conversation history on the physical working-directory path, so
