@@ -43,13 +43,53 @@ Decide which situation you are in:
   (skip the wsl.conf/systemd dance if PID 1 is already systemd; on a Lima guest
   the platform recipe normally already ran `install.sh` — verify instead of
   re-installing).
-- **C. Not on Linux at all** (you are a native Windows Claude Code session):
-  you cannot install WSL yourself. Tell the user exactly this, print the
-  command, and WAIT:
+- **C. Native Windows** (no `$WSL_DISTRO_NAME`, but you are in a Windows
+  environment — `wsl.exe` resolves, or your shell is PowerShell/cmd): you are
+  the OUTSIDE operator of the distro. This is a distinct mode with different
+  powers than A/B — follow the **Windows bootstrap mode** section below instead
+  of Phases 1–3 as written.
 
-  > Claude Code runs without elevation and cannot reboot the machine, so this
-  > one step is yours. In an **elevated** PowerShell (Start → "powershell" →
-  > Run as administrator):
+If the repo is not checked out where you are running (modes A/B): `sudo apt
+update && sudo apt install -y git` (see the sudo note below), then
+`git clone https://github.com/MauRiEEZZZ/worktree-vm && cd worktree-vm`.
+
+## Windows bootstrap mode (you run natively on Windows)
+
+You drive the distro from the outside. Everything inside it goes through:
+
+```powershell
+wsl.exe -d <distro> -- bash -c "<command>"     # plain commands
+wsl.exe -d <distro> -- bash -ic "<command>"    # wt-* commands — REQUIRED once they exist
+```
+
+`-ic` matters as soon as the wt-* functions exist: they live in the distro's
+`~/.bashrc`, which non-interactive shells skip — without `-ic` you get "command
+not found" and might wrongly conclude the install failed. **PowerShell
+quoting:** keep the inner command inside ONE pair of double quotes with no
+nested double quotes; pass anything complex (tasks, file content) base64-encoded
+(`[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($s))`) and decode in
+bash — base64 has no quoting-hostile characters.
+
+**Powers in this mode — the reason it exists as a separate mode:**
+
+- You **MAY run `wsl --shutdown` yourself.** You are NOT inside the distro
+  being restarted, so unlike the in-guest mode (where it is absolutely
+  forbidden because the agent would terminate its own session mid-install) it
+  costs you nothing. Do not "helpfully" carry the in-guest ban over to this
+  mode, and do not remove the in-guest ban because this mode allows it — the
+  difference is WHERE the agent runs, and both rules are load-bearing.
+- You still **CANNOT run `wsl --install -d Ubuntu-24.04`**: it needs elevation
+  and a reboot, and you have neither. Inventory first, read-only:
+
+  ```powershell
+  wsl --status
+  wsl -l -v
+  ```
+
+  If the distro is missing, print exactly this for the user and WAIT:
+
+  > This one step is yours: in an **elevated** PowerShell (Start → "powershell"
+  > → Run as administrator):
   >
   > ```powershell
   > wsl --install -d Ubuntu-24.04
@@ -58,14 +98,35 @@ Decide which situation you are in:
   > Reboot when asked, open Ubuntu once to create your Linux username and
   > password, then come back to me.
 
-  On the user's next turn, verify with `wsl.exe -l -v` (read-only) and continue
-  by driving the distro (`wsl.exe -d Ubuntu-24.04 -- bash -c "..."`) or by
-  telling the user to start a Claude session inside the distro and load this
-  skill there.
+**The sequence that works** (verified in practice on real hardware):
 
-If the repo is not checked out where you are running: `sudo apt update && sudo
-apt install -y git` (see the sudo note below), then
-`git clone https://github.com/MauRiEEZZZ/worktree-vm && cd worktree-vm`.
+1. **Inventory**: `wsl --status`, `wsl -l -v`.
+2. **Distro missing?** → the user installs it (elevated command above); wait,
+   then re-inventory.
+3. **Enable systemd**:
+   `wsl.exe -d <distro> -- bash -c "printf '[boot]\nsystemd=true\n' | sudo tee /etc/wsl.conf"`.
+4. **Restart the distro yourself**: `wsl --shutdown` (allowed in THIS mode).
+5. **Verify**: `wsl.exe -d <distro> -- bash -c "ps -p 1 -o comm="` → `systemd`.
+6. **git + Claude Code in the distro**:
+   `wsl.exe -d <distro> -- bash -c "sudo apt update && sudo apt install -y git"`,
+   then `wsl.exe -d <distro> -- bash -c "curl -fsSL https://claude.ai/install.sh | bash"`.
+7. **Clone the repo in the LINUX home** (`~/worktree-vm`) — explicitly NOT
+   under `/mnt/c`: the Windows filesystem bridge is slow and has odd
+   permission semantics that break builds and git hygiene.
+8. **Config + install**: continue with Phase 2 (interview the user for repos)
+   and Phase 3 (`./install.sh`), running each command through the transport.
+9. **Verify**: the Phase 4 checklist, each command via
+   `wsl.exe -d <distro> -- bash -ic "..."`. The dashboard is directly reachable
+   in a Windows browser at `http://localhost:<port>` — no forwarding.
+
+**sudo**: commands inside the distro prompt for the user's LINUX password on
+the distro's console — warn the user before the first sudo call and batch the
+sudo work (steps 3, 6 and install.sh) rather than being surprised per command.
+
+**Afterwards**, tell the user where their orchestrator session can live from
+here: stay native on Windows and drive sessions over this same WSL transport,
+or run Claude inside the distro (outside `~/wt`) — `skills/dev-sessions`
+documents both (its LOCAL and WSL transports) and the trade-off.
 
 ## Phase 1 — the systemd gate (WSL2 only)
 
@@ -90,7 +151,11 @@ Then STOP and tell the user, verbatim:
 > then reopen Ubuntu and message me again.
 
 On the next turn, re-check `ps -p 1 -o comm=` before proceeding. **NEVER run
-`wsl --shutdown`, `wsl --terminate`, or anything equivalent yourself.**
+`wsl --shutdown`, `wsl --terminate`, or anything equivalent yourself** — this
+ban is about WHERE you run: an agent inside the distro would terminate itself.
+An agent running natively on Windows (the "Windows bootstrap mode" below) is
+outside the distro and MAY run `wsl --shutdown`; keep both rules, they are two
+sides of the same reason.
 
 ## Phase 2 — config (ask, don't invent)
 
