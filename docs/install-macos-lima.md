@@ -137,14 +137,43 @@ a symlink would break `claude --continue` after a rebuild. The provisioning
 handles this (including a boot-race self-heal); don't "simplify" it to a
 symlink.
 
-## Updating / rebuilding
+## Updating / rebuilding — what needs what
 
-- **Update the tooling**: `git -C ~/worktree-vm pull`, then `./platform/lima/up.sh`
-  (re-runs provisioning; idempotent).
-- **Change config features** (repos, stacks, dashboard settings): edit
-  `~/.config/wt/config.yaml`, re-run `up.sh` — or, inside the VM, re-run
-  `~/worktree-vm/install.sh` and `sudo systemctl restart wt-dashboard`.
-- **Change platform facts** (cpus/memory/ports/disks): those are baked into the
-  instance at creation — `limactl delete worktree-vm`, then `up.sh`. Your work,
-  sessions and auth survive on the data disk; `wt-resume` continues where you
-  left off.
+The guest only re-provisions **at boot**, and the guest keeps its own config —
+so know which lever applies. `up.sh` is honest about this: on a RUNNING
+instance it refuses (a bare `limactl start` there would be a silent no-op) and
+prints these options.
+
+**Without a VM restart** (running sessions keep running):
+
+- **Config-driven features** (repos, `clone_paths`, dashboard settings,
+  attention regexes, `sessions.meta_dir`): edit the host config, then
+
+  ```bash
+  ./platform/lima/up.sh --sync-config
+  ```
+
+  This pushes the host config into the guest, regenerates the derived env and
+  restarts the dashboard. (Editing the guest's `~/.config/wt/config.yaml`
+  directly works too — the shell library regenerates its env automatically;
+  `sudo systemctl restart wt-dashboard` for the dashboard.)
+- **Provisioning-level changes** (new `stacks:`, agents, tooling updates after
+  a `git pull`): additionally run, inside the guest,
+
+  ```bash
+  bash ~/worktree-vm/install.sh
+  ```
+
+  Idempotent, no restart. Always go through `install.sh` (or a full boot) —
+  it loads the derived env first; running a single `provision/*.sh` standalone
+  will not see your config (e.g. `90-stacks.sh` then says "no stacks
+  configured").
+
+**With a VM restart** (kills all running tmux/agent sessions — resume with
+`wt-resume` afterwards):
+
+- **Re-run provisioning at boot**: `limactl stop worktree-vm && limactl start
+  worktree-vm` — equivalent to the in-guest `install.sh`, as a reboot.
+- **Platform facts** (`cpus`, `memory`, `ports`, disks): baked in at instance
+  creation — `limactl delete worktree-vm`, then `up.sh`. Your work, sessions
+  and auth survive on the data disk.
