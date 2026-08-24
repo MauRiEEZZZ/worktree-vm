@@ -90,7 +90,7 @@ hooks:
   dir: ~/.config/wt/hooks
 
 # Opt-in toolchains installed by provision/90-stacks.sh. Available:
-# dotnet, powershell, azure-cli, pulumi. Empty = none.
+# dotnet, powershell, azure-cli, pulumi, playwright. Empty = none.
 stacks: []
 
 # Per-stack settings (only read when the stack is enabled).
@@ -99,6 +99,14 @@ stack_options:
   # project's global.json demands a specific band. Empty = the latest LTS
   # channel. The WT_DOTNET_VERSION environment variable overrides this.
   dotnet_version: ""
+  # Browsers for the playwright stack (headless-only; see the stack script).
+  # Firefox is deliberately included by default — it is the browser the
+  # product's users actually use; drop it here only if you truly need just
+  # chromium's quick checks (that also skips firefox's system packages).
+  playwright_browsers: [chromium, firefox]
+  # Playwright version for the stack (empty = latest). The
+  # WT_PLAYWRIGHT_VERSION environment variable overrides this.
+  playwright_version: ""
 
 # Extra guest ports your projects need forwarded to the host. On macOS/Lima
 # these become portForwards (the dashboard port above is always forwarded); on
