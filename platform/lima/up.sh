@@ -37,6 +37,7 @@ DATA_DISK_SIZE=60GiB
 DASH_PORT=7300
 PORTS=""
 EXTRA_LINKS=""
+META_REL=""
 
 expand_home() { case "$1" in "~"|"~/"*) printf '%s%s' "$HOME" "${1#\~}";; *) printf '%s' "$1";; esac; }
 
@@ -55,6 +56,15 @@ while IFS="$(printf '\t')" read -r key val; do
       case "$p" in
         "$HOME"/*) EXTRA_LINKS="$EXTRA_LINKS ${p#"$HOME"/}" ;;
         *) echo "WARN: clone_paths ${key#clone_paths.} = $val is outside \$HOME — not persisted on the data disk" >&2 ;;
+      esac ;;
+    sessions.meta_dir)    # session metadata + tombstones must persist too. Derived
+      # HERE on the host — the data-disk step runs BEFORE the guest config is
+      # seeded, so a guest-side derivation at that point can only ever find the
+      # default (that gap silently left the real meta_dir unpersisted).
+      p="$(expand_home "$val")"
+      case "$p" in
+        "$HOME"/*) META_REL="${p#"$HOME"/}" ;;
+        *) echo "WARN: sessions.meta_dir = $val is outside \$HOME — not persisted on the data disk" >&2 ;;
       esac ;;
   esac
 done <<EOF
@@ -84,7 +94,9 @@ ADDITIONAL_DISKS=""
 PROVISION_DATA_DISK=""
 if [ -n "$DATA_DISK" ]; then
   ADDITIONAL_DISKS="# Persistent data disk — survives \`limactl delete\` + rebuild.${NL}additionalDisks:${NL}  - name: \"$DATA_DISK\"${NL}"
-  PROVISION_DATA_DISK="  # ---- persistent data disk: bind ~/wt + symlink durable dirs (see data-disk.sh) ----${NL}  - mode: user${NL}    script: |${NL}      #!/bin/bash${NL}      set -eu${NL}      export WT_DATA_MOUNT=\"/mnt/lima-$DATA_DISK\"${NL}      export WT_DATA_EXTRA=\"$(echo "$EXTRA_LINKS" | sed 's/^ *//')\"${NL}      bash \"\$HOME/worktree-vm/platform/lima/data-disk.sh\"${NL}"
+  META_ENV=""
+  [ -n "$META_REL" ] && META_ENV="      export WT_SESSIONS_DIR=\"\$HOME/$META_REL\"${NL}"
+  PROVISION_DATA_DISK="  # ---- persistent data disk: bind ~/wt + symlink durable dirs (see data-disk.sh) ----${NL}  - mode: user${NL}    script: |${NL}      #!/bin/bash${NL}      set -eu${NL}      export WT_DATA_MOUNT=\"/mnt/lima-$DATA_DISK\"${NL}      export WT_DATA_EXTRA=\"$(echo "$EXTRA_LINKS" | sed 's/^ *//')\"${NL}${META_ENV}      bash \"\$HOME/worktree-vm/platform/lima/data-disk.sh\"${NL}"
   # Existence check via --json: `limactl disk ls` does NOT support -q (unlike
   # `limactl list`), and an earlier `-q 2>/dev/null` variant swallowed exactly
   # that hard error — empty output, so up.sh tried to create the disk on every

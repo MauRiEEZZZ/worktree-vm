@@ -83,8 +83,12 @@ _wt_link_dir() {  # $1 = path relative to $HOME
 for item in $LINKS $EXTRA; do _wt_link_dir "$item"; done
 
 # The session-metadata dir (dashboard metadata + tombstones) is CONFIGURABLE
-# (sessions.meta_dir), so derive it from the effective guest config instead of
-# hardcoding a name; skip it when it already lives under a path linked above.
+# (sessions.meta_dir). The AUTHORITATIVE value arrives via the WT_SESSIONS_DIR
+# env, derived on the HOST by up.sh: this step runs BEFORE the guest config is
+# seeded, so on a first provision a config read here finds nothing and would
+# silently persist only the default. The config read below is a FALLBACK for
+# later re-provisions / standalone runs; skip the dir when it already lives
+# under a path linked above.
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 META_DIR="${WT_SESSIONS_DIR:-}"
 if [ -z "$META_DIR" ] && [ -f "$HOME/.config/wt/config.yaml" ] && [ -f "$SELF_DIR/../../lib/config/parse-yaml.sh" ]; then
