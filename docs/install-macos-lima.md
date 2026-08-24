@@ -113,10 +113,19 @@ is restorable with fidelity after a rebuild; without the `review-seen.json`
 ledger the PR-review watcher would **re-spawn a review session for every PR it
 had already handled** — the least obvious consequence; and without the
 `~/.claude.json` trust list every worktree re-prompts for folder trust, which
-hangs exactly the unattended (`--auto`) sessions. `~/.claude.json` is a single
-file that Claude Code rewrites atomically, so it is persisted by **copy**
-(restored on rebuild, refreshed on every `limactl start`) rather than symlinked
-— its loss window is "changes since the last VM start".
+hangs exactly the unattended (`--auto`) sessions.
+
+`~/.claude.json` is the deliberate odd one out, layered in two mechanisms
+because no single one is sound: it is a file Claude Code rewrites *atomically*
+(rename replaces a symlink, so symlinking cannot work) and a provision-time
+copy alone is one-way (the snapshot goes stale the moment Claude writes). So:
+the file is copied opportunistically (restored on rebuild, snapshot refreshed
+on every `limactl start`) for its non-critical state, and the part that must
+never be lost — **folder trust** — is not synchronised at all but *re-asserted
+from scratch* for every existing worktree on every provision run
+(`provision/96-worktree-trust.sh`). Trust is therefore self-healing: even an
+empty restored file is harmless, and worktrees created later get trust the
+normal way (at unattended launch, or via the one-time dialog).
 
 (WSL2 users: none of this applies to you — there is no data disk because the
 distro's vhdx is already durable, so all of the above are ordinary durable

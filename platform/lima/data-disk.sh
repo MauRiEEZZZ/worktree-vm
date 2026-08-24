@@ -121,6 +121,10 @@ esac
 # in home) restore it from the disk; then refresh the disk copy on every
 # provision run (= every `limactl start`). Loss window = changes since the last
 # VM start, and Claude Code never sees anything but a regular file.
+# NOTE this copy is only an OPPORTUNISTIC net for non-critical state: the part
+# that must never be lost — folder trust for the worktrees — is re-asserted
+# from scratch by provision/96-worktree-trust.sh right after any restore, so
+# even an empty or stale snapshot here is harmless for trust.
 for f in $FILES; do
   src="$HOME/$f"; dst="$D/$f"
   mkdir -p "$(dirname "$dst")" "$(dirname "$src")"
