@@ -25,10 +25,10 @@ _wt_ide_free_port() {  # first free port from WT_IDE_PORT_BASE upward (probe loo
 ide_start() {  # $1=key $2=name $3=dir $4=sid(ide-<key>--<name>)
   local key="$1" name="$2" dir="$3" sid="$4" port
   local log="/tmp/$sid.log"
-  if tmux has-session -t "$sid" 2>/dev/null; then
+  if tmux has-session -t "=$sid" 2>/dev/null; then
     echo "IDE already running: $sid"
     port="$(cat "$WT_META/$sid.ide-port" 2>/dev/null)"
-    [ -n "$port" ] || { echo "(no recorded port — check: tmux attach -t $sid)"; return 1; }
+    [ -n "$port" ] || { echo "(no recorded port — check: tmux attach -t =$sid)"; return 1; }
   else
     port="$(_wt_ide_free_port)" || return 1
     mkdir -p "$WT_META"; printf '%s\n' "$port" > "$WT_META/$sid.ide-port"
@@ -46,6 +46,6 @@ ide_start() {  # $1=key $2=name $3=dir $4=sid(ide-<key>--<name>)
   echo "(tmux: $sid   |   stop: wt-ide-stop $key $name   |   several worktrees can run their own instance)"
 }
 
-ide_stop() { tmux kill-session -t "$1" 2>/dev/null || true; rm -f "$WT_META/$1.ide-port"; }
+ide_stop() { tmux kill-session -t "=$1" 2>/dev/null || true; rm -f "$WT_META/$1.ide-port"; }
 
 ide_url() { local p; p="$(cat "$WT_META/$1.ide-port" 2>/dev/null)"; [ -n "$p" ] && echo "http://127.0.0.1:$p"; }

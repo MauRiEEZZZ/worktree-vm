@@ -10,5 +10,5 @@ _wt_color() { local s="$1" h=0 i c; for ((i=0;i<${#s};i++)); do printf -v c '%d'
 _wt_apply_color() {  # $1=sid $2=agent
   [ "${2:-claude}" = claude ] || return 0
   local sid="$1" col; col="$(_wt_color "$sid")"
-  nohup bash -c "sleep 5; tmux send-keys -t $(printf %q "$sid") $(printf %q "/color $col") Enter" >/dev/null 2>&1 &
+  nohup bash -c "sleep 5; tmux send-keys -t $(printf %q "=$sid") $(printf %q "/color $col") Enter" >/dev/null 2>&1 &
 }

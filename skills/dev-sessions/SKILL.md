@@ -191,7 +191,8 @@ RUN wt-rm <repo> <name> -f   # force (discards unsaved work) — confirm first
   the user attaches to drive them.)
 - They can also attach in the guest: open a guest shell (`ssh <vm-host>`,
   `wsl.exe -d <distro>`, or you're already there in LOCAL mode) and run
-  `tmux attach -t <repo>--<name>` (detach with `Ctrl-b d`), or use the dashboard's
+  `tmux attach -t =<repo>--<name>` (the `=` forces an exact session-name match;
+  detach with `Ctrl-b d`), or use the dashboard's
   copy-attach button on the configured dashboard port (default
   http://localhost:7300).
 

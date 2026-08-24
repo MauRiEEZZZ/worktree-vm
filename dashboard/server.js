@@ -180,11 +180,11 @@ async function currentBranch(dir) {   // the worktree's ACTUAL checked-out branc
   return err ? null : out.trim();
 }
 async function activity(sid) {
-  const { out } = await bashi(`tmux capture-pane -t ${JSON.stringify(sid)} -p 2>/dev/null`);
+  const { out } = await bashi(`tmux capture-pane -t ${JSON.stringify('=' + sid)} -p 2>/dev/null`);
   return out.split('\n').map(l => l.replace(/\s+$/, '')).filter(l => l.trim()).slice(-14).join('\n');
 }
 async function paneOf(sid) {   // raw pane (last ~40 lines, unfiltered) for attention detection
-  const { out } = await bashi(`tmux capture-pane -t ${JSON.stringify(sid)} -p 2>/dev/null`);
+  const { out } = await bashi(`tmux capture-pane -t ${JSON.stringify('=' + sid)} -p 2>/dev/null`);
   return out.split('\n').slice(-40).join('\n');
 }
 async function prFor(repoFull, branch) {
@@ -649,7 +649,7 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === 'POST' && /^\/api\/sessions\/[^/]+\/ide\/stop$/.test(p)) {
       const sid = decodeURIComponent(p.split('/')[3]);
-      await bashi(`tmux kill-session -t ${JSON.stringify('ide-' + sid)}`);
+      await bashi(`tmux kill-session -t ${JSON.stringify('=ide-' + sid)}`);
       return send(res, 200, { ok: true });
     }
     if (req.method === 'DELETE' && p.startsWith('/api/sessions/')) {

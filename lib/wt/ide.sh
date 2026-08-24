@@ -48,8 +48,8 @@ wt-ide-stop() {
     [ "$n" -gt 1 ] && { echo "multiple IDE backends running — pass <repo> <name>:"; printf '  %s\n' $list; return 1; }
     sid="$list"
   fi
-  if tmux has-session -t "$sid" 2>/dev/null; then
-    tmux kill-session -t "$sid"; rm -f "$WT_META/$sid.ide-port"; echo "IDE stopped: $sid"
+  if tmux has-session -t "=$sid" 2>/dev/null; then
+    tmux kill-session -t "=$sid"; rm -f "$WT_META/$sid.ide-port"; echo "IDE stopped: $sid"
   else
     echo "no IDE backend: $sid"; return 1
   fi

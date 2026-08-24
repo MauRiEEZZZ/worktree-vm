@@ -274,7 +274,7 @@ async function copyText(text, btn){
   if(btn){ const o=btn.textContent; btn.textContent='✓'; setTimeout(()=>{btn.textContent=o;},1200); }
 }
 async function copyAttach(sid, btn){
-  const cmd = META.sshHost ? `ssh -t ${META.sshHost} 'tmux attach -t ${sid}'` : `tmux attach -t ${sid}`;
+  const cmd = META.sshHost ? `ssh -t ${META.sshHost} 'tmux attach -t =${sid}'` : `tmux attach -t =${sid}`;
   return copyText(cmd, btn);
 }
 async function setPriority(sid, priority, sel){

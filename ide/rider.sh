@@ -28,13 +28,13 @@ ide_start() {  # $1=key $2=name $3=dir $4=sid(ide-<key>--<name>)
   local key="$1" name="$2" dir="$3" sid="$4"
   # one IDE backend at a time (see header). Refuse with a clear message.
   local other; other=$(tmux ls 2>/dev/null | sed -E 's/:.*//' | grep -E '^ide-' | grep -vx "$sid" | head -1)
-  if [ -n "$other" ] && ! tmux has-session -t "$sid" 2>/dev/null; then
+  if [ -n "$other" ] && ! tmux has-session -t "=$sid" 2>/dev/null; then
     echo "An IDE backend is already running: $other"
     echo "JetBrains allows only one at a time. Stop it first:"
-    echo "  wt-ide-stop   (or: tmux kill-session -t $other)"
+    echo "  wt-ide-stop   (or: tmux kill-session -t =$other)"
     return 1
   fi
-  if tmux has-session -t "$sid" 2>/dev/null; then
+  if tmux has-session -t "=$sid" 2>/dev/null; then
     echo "IDE backend already running: $sid"
   else
     local log="/tmp/$sid.log"; : > "$log"
@@ -46,7 +46,7 @@ ide_start() {  # $1=key $2=name $3=dir $4=sid(ide-<key>--<name>)
     link=$(ide_url "$sid")
     [ -n "$link" ] && break; sleep 3
   done
-  [ -z "$link" ] && { echo "no Join link found (check: tmux attach -t $sid)"; return 1; }
+  [ -z "$link" ] && { echo "no Join link found (check: tmux attach -t =$sid)"; return 1; }
   local port; port=$(echo "$link" | sed -E 's#tcp://127.0.0.1:([0-9]+).*#\1#')
   echo
   echo "1) Forward the port from your workstation:"
@@ -56,6 +56,6 @@ ide_start() {  # $1=key $2=name $3=dir $4=sid(ide-<key>--<name>)
   echo "(tmux: $sid   |   stop: wt-ide-stop $key $name)"
 }
 
-ide_stop() { tmux kill-session -t "$1" 2>/dev/null || true; }
+ide_stop() { tmux kill-session -t "=$1" 2>/dev/null || true; }
 
 ide_url() { grep -m1 -oE 'tcp://127\.0\.0\.1:[0-9]+#[^ ]+' "/tmp/$1.log" 2>/dev/null; }

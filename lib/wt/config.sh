@@ -33,3 +33,8 @@ _wt_clonepath() {
   echo "$HOME/repos/$key"
 }
 _wt_sid()       { echo "$1--$2"; }   # tmux/agent id from <key> <name>
+# NOTE: whenever a sid is used as a tmux -t TARGET, prefix it with '=' (tmux
+# syntax for "exact name"). Without it tmux falls back to prefix/fnmatch
+# matching, so a session named <sid> would match its <sid>-review neighbour —
+# wrong has-session answers, wrong pane captures, and kill-session hitting the
+# neighbour. `new-session -s <sid>` takes a NAME, not a target, so no '=' there.

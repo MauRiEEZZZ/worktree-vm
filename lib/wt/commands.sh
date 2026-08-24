@@ -85,9 +85,9 @@ wt-new() {
   _wt_apply_color "$sid" "$agent"   # give the session its (dashboard-matching) prompt-bar colour
   echo "worktree: $dir  (branch $branch, $basedesc)"
   echo "$agent:   $label   |   tmux: $sid${task:+   (task: $task)}"
-  if [ -n "${TMUX:-}" ]; then tmux switch-client -t "$sid";
-  elif [ -t 1 ]; then tmux attach -t "$sid";
-  else echo "attach with: tmux attach -t $sid"; fi
+  if [ -n "${TMUX:-}" ]; then tmux switch-client -t "=$sid";
+  elif [ -t 1 ]; then tmux attach -t "=$sid";
+  else echo "attach with: tmux attach -t =$sid"; fi
 }
 
 # wt-resume <repo> <name> : reopen an existing worktree session in tmux and resume
@@ -106,7 +106,7 @@ wt-resume() {
   model="$(_wt_model_get "$sid")"   # and the same model override (if any)
   [[ "$flags" == *auto* ]] && auto=1; [[ "$flags" == *denypost* ]] && denypost=1
   [ -d "$dir" ] || { echo "no worktree: $dir (use wt-new to create one)"; return 1; }
-  if tmux has-session -t "$sid" 2>/dev/null; then
+  if tmux has-session -t "=$sid" 2>/dev/null; then
     echo "session already running: $sid"
   elif [ -n "${WT_NO_LAUNCH:-}" ]; then
     echo "would resume: $label ($agent) in $dir [no-launch]"; return 0
@@ -117,9 +117,9 @@ wt-resume() {
     _wt_apply_color "$sid" "$agent"   # re-apply the prompt-bar colour (it isn't persisted)
     echo "resumed: $label ($agent)  (tmux $sid)"
   fi
-  if [ -n "${TMUX:-}" ]; then tmux switch-client -t "$sid";
-  elif [ -t 1 ]; then tmux attach -t "$sid";
-  else echo "attach with: tmux attach -t $sid"; fi
+  if [ -n "${TMUX:-}" ]; then tmux switch-client -t "=$sid";
+  elif [ -t 1 ]; then tmux attach -t "=$sid";
+  else echo "attach with: tmux attach -t =$sid"; fi
 }
 
 # wt-restore <repo> <name> [--branch <b>] [--agent claude|codex] [--model <m>] [--auto] [--deny-post]
@@ -219,15 +219,15 @@ wt-rm() {
   # actual branch of the worktree (may be a PR branch, not feat/<name>)
   local wtbranch; wtbranch=$(git -C "$dir" branch --show-current 2>/dev/null); [ -n "$wtbranch" ] && branch="$wtbranch"
   if [ "$force" = "-f" ]; then
-    tmux kill-session -t "$sid" 2>/dev/null || true
-    tmux kill-session -t "ide-$sid" 2>/dev/null || true
+    tmux kill-session -t "=$sid" 2>/dev/null || true
+    tmux kill-session -t "=ide-$sid" 2>/dev/null || true
     git -C "$repo" worktree remove --force "$dir" && git -C "$repo" branch -D "$branch" 2>/dev/null
     rm -f "$WT_META/$sid.agent" "$WT_META/$sid.flags" "$WT_META/$sid.model" "$WT_META/$sid.priority" "$WT_META/$sid.idle_since"
   else
     # safe: try to remove FIRST; only kill the sessions if the worktree is clean and removed
     git -C "$repo" worktree remove "$dir" || return 1
-    tmux kill-session -t "$sid" 2>/dev/null || true
-    tmux kill-session -t "ide-$sid" 2>/dev/null || true
+    tmux kill-session -t "=$sid" 2>/dev/null || true
+    tmux kill-session -t "=ide-$sid" 2>/dev/null || true
     git -C "$repo" branch -d "$branch" 2>/dev/null
     rm -f "$WT_META/$sid.agent" "$WT_META/$sid.flags" "$WT_META/$sid.model" "$WT_META/$sid.priority" "$WT_META/$sid.idle_since"
   fi
@@ -303,8 +303,8 @@ wt-ls() {
       [ -e "$d/.git" ] || continue
       key="$(basename "$(dirname "$d")")"; name="$(basename "$d")"; sid="${key}--${name}"
       agent="$(_wt_agent_get "$sid")"
-      tmux has-session -t "$sid" 2>/dev/null && cl=running || cl=stopped
-      if tmux has-session -t "ide-$sid" 2>/dev/null; then
+      tmux has-session -t "=$sid" 2>/dev/null && cl=running || cl=stopped
+      if tmux has-session -t "=ide-$sid" 2>/dev/null; then
         port=$(grep -m1 -oE 'tcp://127\.0\.0\.1:[0-9]+' "/tmp/ide-$sid.log" 2>/dev/null | grep -oE '[0-9]+$'); ide="${port:-running}"
       else ide="-"; fi
       branch=$(git -C "$d" branch --show-current 2>/dev/null)

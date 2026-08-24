@@ -48,7 +48,8 @@ see the other session's output. So relay:
 
 - The review session name it printed (`wt/<repo>/<name>-review`) and that they can
   watch it via its own **Remote Control** link, or attach in the VM with
-  `tmux attach -t <repo>--<name>-review` (detach `Ctrl-b d`), or via the dashboard
+  `tmux attach -t =<repo>--<name>-review` (the `=` forces an exact match; detach
+  `Ctrl-b d`), or via the dashboard
   on the configured dashboard port (default http://localhost:7300).
 - That when they're done they can clean it up with
   `bash -ic "wt-rm <repo> <name>-review"`.
