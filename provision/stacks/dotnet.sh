@@ -2,13 +2,15 @@
 # stacks/dotnet.sh — .NET SDK via the official install script (architecture is
 # auto-detected). NOT from apt: Ubuntu's dotnet-sdk package can lag behind what a
 # project's global.json requires.
-# Default: the latest LTS channel. Pin an exact version for reproducible
-# rebuilds with WT_DOTNET_VERSION (e.g. WT_DOTNET_VERSION=10.0.301 ./install.sh).
+# Version precedence: WT_DOTNET_VERSION env var > stack_options.dotnet_version
+# from the config (WT_DOTNET_VERSION_DEFAULT in the derived env) > latest LTS
+# channel.
 set -eu -o pipefail
 
+DOTNET_VERSION="${WT_DOTNET_VERSION:-${WT_DOTNET_VERSION_DEFAULT:-}}"
 curl -fsSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh
-if [ -n "${WT_DOTNET_VERSION:-}" ]; then
-  sudo bash /tmp/dotnet-install.sh --version "$WT_DOTNET_VERSION" --install-dir /usr/share/dotnet
+if [ -n "$DOTNET_VERSION" ]; then
+  sudo bash /tmp/dotnet-install.sh --version "$DOTNET_VERSION" --install-dir /usr/share/dotnet
 else
   sudo bash /tmp/dotnet-install.sh --channel LTS --install-dir /usr/share/dotnet
 fi

@@ -36,7 +36,8 @@ containing `#` or `:`. A leading `~/` in path values expands to `$HOME`.
 | `repos` | `{}` | registry: short key → GitHub `owner/repo`. The key names the clone (`~/repos/<key>`), worktrees (`~/wt/<key>/<name>`) and session ids (`<key>--<name>`). |
 | `clone_paths` | `{}` | key → absolute path of the main clone, when it must live somewhere other than `~/repos/<key>`. An entry wins unconditionally (bash and dashboard both honour it). On Lima, paths under `~` are also persisted onto the data disk. |
 | `default_base_branch` | `main` | branch used when a clone's `origin/HEAD` cannot be resolved (wt-new base, wt-review merge-base). |
-| `stacks` | `[]` | opt-in toolchains installed by `provision/90-stacks.sh`: `dotnet`, `powershell`, `azure-cli`, `pulumi`. The dotnet stack installs latest LTS; pin with the `WT_DOTNET_VERSION` env var when running `install.sh`. |
+| `stacks` | `[]` | opt-in toolchains installed by `provision/90-stacks.sh`: `dotnet`, `powershell`, `azure-cli`, `pulumi`. |
+| `stack_options.dotnet_version` | `""` | exact .NET SDK version for the dotnet stack (e.g. `10.0.301`), for when a project's `global.json` demands a specific band. Empty = latest LTS channel. The `WT_DOTNET_VERSION` env var overrides the config value. |
 | `ports` | `[]` | extra guest ports to expose to the host. Lima: rendered as portForwards. WSL2: informational (localhost forwarding is automatic). |
 
 ### `github`

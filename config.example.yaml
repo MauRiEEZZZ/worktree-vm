@@ -93,6 +93,13 @@ hooks:
 # dotnet, powershell, azure-cli, pulumi. Empty = none.
 stacks: []
 
+# Per-stack settings (only read when the stack is enabled).
+stack_options:
+  # Exact .NET SDK version for the dotnet stack (e.g. 10.0.301) — pin it when a
+  # project's global.json demands a specific band. Empty = the latest LTS
+  # channel. The WT_DOTNET_VERSION environment variable overrides this.
+  dotnet_version: ""
+
 # Extra guest ports your projects need forwarded to the host. On macOS/Lima
 # these become portForwards (the dashboard port above is always forwarded); on
 # WSL2 no forwarding is needed (localhost forwarding is on by default).

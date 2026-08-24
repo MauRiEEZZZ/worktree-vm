@@ -36,6 +36,7 @@ SECRETS_SRC=""
 SESSIONS_DIR="$HOME/.wt-sessions"
 HOOKS_DIR="$HOME/.config/wt/hooks"
 STACKS=""
+DOTNET_VERSION=""
 FORWARD_PORTS=""
 declare -A REPOS=()
 declare -A CLONE_PATHS=()
@@ -63,6 +64,7 @@ if [ -f "$CONFIG_FILE" ]; then
       sessions.meta_dir)      SESSIONS_DIR="$(expand_home "$val")" ;;
       hooks.dir)              HOOKS_DIR="$(expand_home "$val")" ;;
       stacks.[0-9]*)          STACKS="${STACKS:+$STACKS }$val" ;;
+      stack_options.dotnet_version) DOTNET_VERSION="$val" ;;
       ports.[0-9]*)           FORWARD_PORTS="${FORWARD_PORTS:+$FORWARD_PORTS }$val" ;;
     esac
   done < <(wt_yaml_flatten "$CONFIG_FILE")
@@ -89,6 +91,9 @@ ENV_SH="$WT_CONFIG_DIR/env.sh"
   printf 'export WT_SESSIONS_DIR=%q\n'        "$SESSIONS_DIR"
   printf 'export WT_HOOKS_DIR=%q\n'           "$HOOKS_DIR"
   printf 'export WT_STACKS=%q\n'              "$STACKS"
+  # _DEFAULT on purpose: exporting WT_DOTNET_VERSION itself would clobber a
+  # user-provided env override when install.sh sources this file.
+  printf 'export WT_DOTNET_VERSION_DEFAULT=%q\n' "$DOTNET_VERSION"
   printf 'export WT_FORWARD_PORTS=%q\n'       "$FORWARD_PORTS"
   echo 'declare -gA WT_REPOS=()'
   for k in "${!REPOS[@]}"; do printf 'WT_REPOS[%q]=%q\n' "$k" "${REPOS[$k]}"; done
