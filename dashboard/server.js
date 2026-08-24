@@ -190,12 +190,19 @@ async function currentBranch(dir) {   // the worktree's ACTUAL checked-out branc
   const { out, err } = await run('git', ['-C', dir, 'branch', '--show-current']);
   return err ? null : out.trim();
 }
+// tmux target for the session's current PANE. Note the trailing ':' — it is not
+// cosmetic. `-t '=<session>'` is a valid *session* target but NOT a pane target:
+// capture-pane/send-keys answer "can't find pane" (or silently return nothing),
+// which is how this once left every dashboard card without its pane text. The
+// ':' selects the session's current window/pane while '=' still pins the session
+// name exactly, so `foo` never resolves to `foo-review`.
+const paneTarget = sid => JSON.stringify(`=${sid}:`);
 async function activity(sid) {
-  const { out } = await bashi(`tmux capture-pane -t ${JSON.stringify('=' + sid)} -p 2>/dev/null`);
+  const { out } = await bashi(`tmux capture-pane -t ${paneTarget(sid)} -p 2>/dev/null`);
   return out.split('\n').map(l => l.replace(/\s+$/, '')).filter(l => l.trim()).slice(-14).join('\n');
 }
 async function paneOf(sid) {   // raw pane (last ~40 lines, unfiltered) for attention detection
-  const { out } = await bashi(`tmux capture-pane -t ${JSON.stringify('=' + sid)} -p 2>/dev/null`);
+  const { out } = await bashi(`tmux capture-pane -t ${paneTarget(sid)} -p 2>/dev/null`);
   return out.split('\n').slice(-40).join('\n');
 }
 async function prFor(repoFull, branch) {
