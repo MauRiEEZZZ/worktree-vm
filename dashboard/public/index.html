@@ -61,6 +61,8 @@
   .sec h2 { font-size:13px; text-transform:uppercase; letter-spacing:.05em; color:var(--mut); margin:0 0 10px; font-weight:700; }
   .sec .cnt { display:inline-block; min-width:18px; text-align:center; background:var(--line); color:var(--fg); border-radius:10px; font-size:11px; padding:0 6px; }
   .sec-need h2 { color:#ff9b8a; } .sec-need .cnt { background:#3a1414; color:#ff9b8a; }
+  .sec-review h2 { color:#7db8ff; } .sec-review .cnt { background:#10233b; color:#7db8ff; }
+  .sec-parked h2 { color:var(--mut); }
   .repo { font-size:11px; padding:2px 9px; border-radius:20px; color:#04101f; background:var(--blu); font-weight:600; }
   .links { margin-left:auto; display:flex; gap:8px; align-items:center; }
   a.link { color:var(--blu); text-decoration:none; font-size:13px; border:1px solid var(--line); padding:5px 10px; border-radius:7px; }
@@ -188,6 +190,9 @@ function card(s){
         ${!/-review$/.test(s.name||'') ? `<select data-reviewscope="${esc(s.id)}" title="review scope" style="font-size:12px">`
           + `<option value="working">working</option><option value="committed">committed</option><option value="all">all</option></select>`
           + `<button data-review="${esc(s.id)}" title="start an independent Claude+Codex review of this session (reports, posts nothing)">🔍 review</button>` : ''}
+        ${s.parked
+          ? `<button data-park="${esc(s.id)}" data-parked="1" title="back to work-in-progress (pure UI grouping — nothing was stopped)">▶ unpark</button>`
+          : `<button data-park="${esc(s.id)}" data-parked="0" title="park: keep the session and its context, but move it out of the WIP view (nothing is stopped or removed)">⏸ park</button>`}
         <button class="danger" data-rm="${esc(s.id)}">delete</button>
       </span>
     </div>
@@ -233,17 +238,35 @@ async function load(){
     const list = $('#list');
     window.ANY_IDE = data.some(x => x.ide && x.ide.running);
     if(!data.length){ list.innerHTML = '<div class="empty">No sessions. Pick a repo and enter a task above.</div>'; return; }
-    // Triage grouping: needs-you (idle) first — by priority then longest waiting — then busy, then done/stopped.
+    // Grouping: WIP first (needs-you by priority then longest waiting, then busy),
+    // then waiting-on-review (derived from the PR state, moves automatically),
+    // then parked (manual, collapsed with a counter), then done/stopped.
+    // Parked/waiting are taken OUT before the WIP split, so a session without a
+    // marker and without a review-required PR behaves exactly as before. The
+    // parked-beats-waitingReview precedence is resolved server-side.
     const pRank = p => ({p1:0,p2:1,p3:2}[p||'p2']);
-    const needs = data.filter(s => s.status==='running' && (s.attention==='needs_you' || s.attention==='idle'))
+    const parked = data.filter(s => s.parked);
+    const waitingRev = data.filter(s => !s.parked && s.waitingReview);
+    const active = data.filter(s => !s.parked && !s.waitingReview);
+    const needs = active.filter(s => s.status==='running' && (s.attention==='needs_you' || s.attention==='idle'))
       .sort((a,b) => pRank(a.priority)-pRank(b.priority) || (b.waitingMs||0)-(a.waitingMs||0));
-    const busy  = data.filter(s => s.status==='running' && s.attention==='working')
+    const busy  = active.filter(s => s.status==='running' && s.attention==='working')
       .sort((a,b) => pRank(a.priority)-pRank(b.priority));
-    const rest  = data.filter(s => !needs.includes(s) && !busy.includes(s));
+    const rest  = active.filter(s => !needs.includes(s) && !busy.includes(s));
     const section = (title, arr, cls) => arr.length ? `<div class="sec ${cls}"><h2>${title} <span class="cnt">${arr.length}</span></h2>${arr.map(card).join('')}</div>` : '';
+    // parked: collapsed by default — the whole point is getting it out of view
+    const parkedSection = parked.length
+      ? `<div class="sec sec-parked"><h2>⏸ Parked <span class="cnt">${parked.length}</span> `
+        + `<button id="parkedToggle" style="font-size:11px">${window.PARKED_OPEN?'hide':'show'}</button></h2>`
+        + (window.PARKED_OPEN ? parked.map(card).join('') : '') + `</div>`
+      : '';
     list.innerHTML = section('① Needs you', needs, 'sec-need')
       + section('② Working', busy, 'sec-work')
-      + section('③ Done &amp; stopped', rest, 'sec-rest');
+      + section('③ Waiting on review', waitingRev, 'sec-review')
+      + parkedSection
+      + section('④ Done &amp; stopped', rest, 'sec-rest');
+    const pt = $('#parkedToggle');
+    if(pt) pt.onclick = () => { window.PARKED_OPEN = !window.PARKED_OPEN; load(); };
     // Focus-nudge: you're attached to a session while a HIGHER-priority one needs you.
     const nudgeEl = $('#nudge');
     const here = data.find(s => s.attached);
@@ -260,6 +283,7 @@ async function load(){
     notifyNeedsYou(data);
     list.querySelectorAll('[data-prio]').forEach(sel => sel.onchange = () => setPriority(sel.getAttribute('data-prio'), sel.value, sel));
     list.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => remove(b.getAttribute('data-rm')));
+    list.querySelectorAll('[data-park]').forEach(b => b.onclick = () => setParked(b.getAttribute('data-park'), b.getAttribute('data-parked')!=='1', b));
     list.querySelectorAll('[data-attach]').forEach(b => b.onclick = () => copyAttach(b.getAttribute('data-attach'), b));
     list.querySelectorAll('[data-resume]').forEach(b => b.onclick = () => resume(b.getAttribute('data-resume'), b));
     list.querySelectorAll('[data-review]').forEach(b => b.onclick = () => review(b.getAttribute('data-review'), b));
@@ -327,12 +351,19 @@ async function restoreSession(sid, btn){
   }catch{ alert('restore failed'); if(btn){btn.disabled=false;btn.textContent='↩ restore';} return; }
   loadRecover(); load();
 }
+async function setParked(sid, parked, btn){
+  if(btn){ btn.disabled = true; }
+  try { await fetch('/api/sessions/'+encodeURIComponent(sid)+'/parked', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({parked})}); }
+  catch { alert('updating the parked state failed'); }
+  load();   // the card moves group; nothing else changes (session keeps running)
+}
 // Browser notification when a p1 session newly needs you (permission-gated, deduped per sid).
+// Parked and waiting-on-review sessions never notify — they are explicitly out of view.
 const notified = new Set();
 function notifyNeedsYou(data){
   if(!('Notification' in window) || Notification.permission!=='granted') return;
   for(const s of data){
-    if(s.status==='running' && s.attention==='needs_you' && s.priority==='p1' && !s.attached){
+    if(s.status==='running' && s.attention==='needs_you' && s.priority==='p1' && !s.attached && !s.parked && !s.waitingReview){
       if(!notified.has(s.id)){ notified.add(s.id); new Notification('P1 waiting for you: '+s.name, { body: (s.recap||'').slice(0,120) }); }
     } else notified.delete(s.id);
   }
