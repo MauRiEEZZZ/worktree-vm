@@ -25,10 +25,12 @@ it away and rebuild it in minutes — while your worktrees, session history and 
   `wt-resume`, `wt-rm` (safe by default, tombstones metadata), `wt-restore` (deleted session +
   its preserved conversation come back), `wt-review` (independent Claude+Codex second-opinion
   review of a session's work), `wt-seed-main`, `wt-env`, `wt-ide`. Tab completion included.
-- **Dashboard** (localhost web UI): create sessions from a task or a pasted issue/PR URL, triage by
-  "needs you / working / done" with priorities and an optional LLM attention digest, PR + CI
-  badges, one-click resume/review/delete/restore, per-session copy-attach one-liners — and an
-  optional watcher that auto-starts a review session for every PR where your review is requested.
+- **Dashboard** (localhost web UI): create sessions from a task or a pasted issue/PR URL; grouped
+  into work-in-progress → waiting on review (derived from the PR state) → parked (one click,
+  keeps everything running) → done/stopped, with priorities, working/waiting badges and an
+  optional LLM attention digest that reads the idle panes for you; PR + CI badges, one-click
+  resume/review/delete/restore, per-session copy-attach one-liners — and an optional watcher
+  that auto-starts a review session for every PR where your review is requested.
 - **Optional per-worktree IDE**: `wt-ide` with the `code-server` backend (VS Code in the browser,
   one instance per worktree) or JetBrains `rider` (Gateway remote-dev). Off by default.
 - **Config + hooks, no forks**: everything project-specific (repo registry, base branch, secrets

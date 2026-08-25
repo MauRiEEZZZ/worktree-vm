@@ -147,7 +147,7 @@ prints these options.
 **Without a VM restart** (running sessions keep running):
 
 - **Config-driven features** (repos, `clone_paths`, dashboard settings,
-  attention regexes, `sessions.meta_dir`): edit the host config, then
+  `sessions.meta_dir`): edit the host config, then
 
   ```bash
   ./platform/lima/up.sh --sync-config

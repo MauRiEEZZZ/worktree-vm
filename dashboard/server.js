@@ -118,20 +118,15 @@ function idleSince(sid, isIdle) {
   try { fs.unlinkSync(f); } catch {}
   return null;
 }
-// Classify a session from its captured tmux pane. Returns { attention, recap }.
-//   working  — a spinner / a queued-or-running command on the ❯ prompt
-//   needs_you — idle at an empty prompt AND the last line reads like it wants the user
-//   done     — idle AND the last line reads finished
-//   idle     — idle, unclear (treat as needs-you-lite in the UI)
-// Both regexes are overridable via the config (dashboard.attention.needs_re /
-// done_re -> NEEDS_RE / DONE_RE in the env) for sessions that converse in
-// another language; the built-in defaults match English phrasing. Invalid
-// overrides warn and fall back to the defaults (see regexFromEnv above).
-const NEEDS_RE = regexFromEnv('NEEDS_RE',
-  /(waiting for|your go|let me know|do you want|would you like|can you|could you|may i|shall i|should i|run !|\brun `|give (me|it)|which|\?\s*$)/i);
-const DONE_RE = regexFromEnv('DONE_RE',
-  /(no follow-up|nothing (further|else|more)|nothing left|all done|fully done|is done|is complete|completed|finished|wrapped up)/i);
-function attentionOf(pane) {
+// Classify a session from its captured tmux pane. Returns { working, recap }.
+// ONLY the hard evidence survives here: a spinner or a queued/running command
+// on the ❯ prompt means "working"; everything else running is simply "not
+// working" (waiting). Earlier versions also guessed "needs you" / "done" by
+// phrase-matching one line of pane text — that was rarely the truth and was
+// removed deliberately; the LLM attention digest (which actually READS the
+// pane) is the replacement for that guess. recap stays: the last meaningful
+// line, shown on the card and fed to the digest.
+function paneState(pane) {
   const lines = (pane || '').split('\n').map(l => l.replace(/\s+$/, ''));
   const nonEmpty = lines.filter(l => l.trim());
   // spinner / active markers anywhere near the end
@@ -150,10 +145,7 @@ function attentionOf(pane) {
     recap = (above[above.length - 1] || '').replace(/^[※•\s]+/, '').trim();
   }
   recap = recap.slice(0, 200);
-  if (working || promptHasCmd) return { attention: 'working', recap };
-  if (DONE_RE.test(recap)) return { attention: 'done', recap };
-  if (NEEDS_RE.test(recap)) return { attention: 'needs_you', recap };
-  return { attention: 'idle', recap };
+  return { working: working || promptHasCmd, recap };
 }
 function sidOf(key, name) { return `${key}--${name}`; }
 function splitSid(sid) { const i = sid.indexOf('--'); return i < 0 ? null : { key: sid.slice(0, i), name: sid.slice(i + 2) }; }
@@ -217,7 +209,7 @@ async function activity(sid) {
   const { out } = await bashi(`tmux capture-pane -t ${paneTarget(sid)} -p 2>/dev/null`);
   return out.split('\n').map(l => l.replace(/\s+$/, '')).filter(l => l.trim()).slice(-14).join('\n');
 }
-async function paneOf(sid) {   // raw pane (last ~40 lines, unfiltered) for attention detection
+async function paneOf(sid) {   // raw pane (last ~40 lines, unfiltered) for working/recap detection
   const { out } = await bashi(`tmux capture-pane -t ${paneTarget(sid)} -p 2>/dev/null`);
   return out.split('\n').slice(-40).join('\n');
 }
@@ -293,20 +285,24 @@ async function buildSessions() {
       (s.dir && repoFull) ? prFor(repoFull, branch) : Promise.resolve(null),
     ]);
     const deploy = (pr && repoFull) ? await deployUrl(repoFull, pr.number) : null;
-    // attention/recap only meaningful for a running session; stopped -> 'stopped'
-    const att = running ? attentionOf(pane) : { attention: 'stopped', recap: '' };
-    const waitingSince = running ? idleSince(s.sid, att.attention !== 'working') : null;
+    // working/recap only meaningful for a running session. The field is a plain
+    // boolean and deliberately RENAMED (no `attention` alias): the old tri-state
+    // guess is gone, only the factual signal remains, and the dashboard UI is
+    // this API's only consumer (it ships together with the server), so an alias
+    // would just be the half-renamed field to avoid.
+    const att = running ? paneState(pane) : { working: false, recap: '' };
+    const waitingSince = running ? idleSince(s.sid, !att.working) : null;
     const parked = readParked(s.sid);
     return {
       id: s.sid, repo: s.key, repoFull, name: s.name, branch, status,
       agent: readAgent(s.sid), model: readModel(s.sid), priority: readPriority(s.sid),
       // Precedence: MANUAL parking always wins over the derived waiting-on-review
       // state — parking is an explicit user statement, the PR state is inference.
-      // waitingReview is pre-resolved here so every consumer (UI grouping, nudge,
-      // digest) applies the same rule.
+      // waitingReview is pre-resolved here so every consumer (UI grouping and
+      // the digest) applies the same rule.
       parked, waitingReview: !parked && isWaitingReview(pr),
-      attention: att.attention, recap: att.recap,
-      waitingMs: (waitingSince && att.attention !== 'working') ? (Date.now() - waitingSince) : null,
+      working: att.working, recap: att.recap,
+      waitingMs: (waitingSince && !att.working) ? (Date.now() - waitingSince) : null,
       attached: !!(tmux[s.sid] && tmux[s.sid].attached),
       created: tmux[s.sid] ? tmux[s.sid].created : (meta.createdAt || null),
       task: meta.task || null,
@@ -478,25 +474,29 @@ async function pollReviewRequests() {
 }
 
 // --- attention digest ------------------------------------------------------
-// Cheap LLM pass over the idle (needs-you) sessions: rank them and say, per session, WHY it
-// needs you and the suggested NEXT step. Cost-controlled: a cheap model, idle-only, on-demand
-// by default (DIGEST_POLL_MS=0). Result cached in lastDigest and served at GET /api/digest.
+// Cheap LLM pass over the running-but-not-working sessions: rank them and say,
+// per session, WHY it needs the user and the suggested NEXT step. This digest
+// IS the replacement for the removed needs-you/done phrase-matching: an LLM
+// that actually reads the pane instead of a regex looking for a question mark.
+// Cost-controlled: a cheap model, non-working-only, on-demand by default
+// (DIGEST_POLL_MS=0). Result cached in lastDigest and served at GET /api/digest.
 async function runDigest() {
   if (!DIGEST || lastDigest.running) return lastDigest;
   lastDigest.running = true;
   try {
     const sessions = await buildSessions();
-    // Parked and waiting-on-review sessions are deliberately excluded: both are
-    // "not my problem right now" states, so the digest must not keep demanding
-    // attention for them — that is exactly the clutter parking exists to remove.
-    const idle = sessions.filter(s => s.status === 'running' && (s.attention === 'needs_you' || s.attention === 'idle')
+    // Input: every RUNNING session that is not working right now — except
+    // parked and waiting-on-review ones, which are deliberately excluded: both
+    // are "not my problem right now" states, so the digest must not keep
+    // demanding attention for them — exactly the clutter parking exists to remove.
+    const idle = sessions.filter(s => s.status === 'running' && !s.working
       && !s.parked && !s.waitingReview);
     if (!idle.length) { lastDigest = { at: Date.now(), items: [], running: false }; return lastDigest; }
     const payload = idle.map(s => ({ sid: s.id, name: s.name, repo: s.repo, priority: s.priority, recap: s.recap, tail: (s.activity || '').split('\n').slice(-8).join('\n') }));
     const prompt = [
-      'You are a triage assistant for parallel dev sessions. Below are sessions that are idle (possibly waiting for the user), as JSON.',
+      'You are a triage assistant for parallel dev sessions. Below are sessions that are not working right now (possibly waiting for the user), as JSON.',
       'Per session, determine whether it really needs the user and why, and give the concrete next step. Rank from most to least urgent (weigh priority p1>p2>p3).',
-      'Answer with ONLY a JSON array, no extra text: [{"sid","state":"needs_you|blocked|done|unclear","why":"<1 sentence>","next":"<1 sentence>"}].',
+      'Answer with ONLY a JSON array, no extra text: [{"sid","state":"needs_user|blocked|done|unclear","why":"<1 sentence>","next":"<1 sentence>"}].',
       'Sessions:', JSON.stringify(payload),
     ].join('\n');
     const b64 = Buffer.from(prompt, 'utf8').toString('base64');

@@ -74,8 +74,6 @@ containing `#` or `:`. A leading `~/` in path values expands to `$HOME`.
 | `port` | `7300` | dashboard HTTP port (bound to 127.0.0.1 in the guest; forwarded on Lima, localhost-forwarded on WSL2). |
 | `deploy_url_regex` | `""` | regex that recognises deploy/preview URLs in PR bodies/comments; first match becomes the card's "deploy" link. **Empty = feature off** (and no extra `gh` calls). |
 | `ssh_host` | `""` | this VM's ssh alias as reachable *from your workstation*; used in the copy-attach / port-forward one-liners. Empty = plain `tmux attach` commands without the ssh hop. |
-| `attention.needs_re` | `""` | override for the "needs you" classifier (case-insensitive JS regex over the session's last pane line). Empty = built-in English default. Set this if your sessions converse in another language. |
-| `attention.done_re` | `""` | same, for the "done" classifier. |
 
 ### `ide`
 

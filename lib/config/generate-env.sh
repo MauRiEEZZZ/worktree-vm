@@ -27,8 +27,6 @@ MODEL_CHOICES=""
 DASHBOARD_PORT=7300
 DEPLOY_URL_REGEX=""
 SSH_HOST=""
-ATTENTION_NEEDS_RE=""
-ATTENTION_DONE_RE=""
 IDE_BACKEND=none
 IDE_PORT_BASE=6000
 IDE_RIDER_VERSION=2026.1.3
@@ -57,8 +55,6 @@ if [ -f "$CONFIG_FILE" ]; then
       dashboard.port)         DASHBOARD_PORT="$val" ;;
       dashboard.deploy_url_regex) DEPLOY_URL_REGEX="$val" ;;
       dashboard.ssh_host)     SSH_HOST="$val" ;;
-      dashboard.attention.needs_re) ATTENTION_NEEDS_RE="$val" ;;
-      dashboard.attention.done_re)  ATTENTION_DONE_RE="$val" ;;
       ide.backend)            IDE_BACKEND="$val" ;;
       ide.port_base)          IDE_PORT_BASE="$val" ;;
       ide.rider_version)      IDE_RIDER_VERSION="$val" ;;
@@ -147,9 +143,6 @@ DASH_ENV="$WT_CONFIG_DIR/dashboard.env"
   env_line PR_REVIEW_OWNER  "$REVIEW_OWNER"
   env_line PR_REVIEW_MODEL  "$REVIEW_MODEL"
   env_line DEPLOY_RE        "$DEPLOY_URL_REGEX"
-  echo "# Attention-classifier overrides (config dashboard.attention.*); empty = built-in English defaults."
-  env_line NEEDS_RE         "$ATTENTION_NEEDS_RE"
-  env_line DONE_RE          "$ATTENTION_DONE_RE"
   echo "# Attention digest: cheap LLM triage of idle sessions. On-demand by default"
   echo "# (dashboard button); set DIGEST_POLL_MS>0 for a timer. DIGEST=0 disables."
   env_line DIGEST           "1"

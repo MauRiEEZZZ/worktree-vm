@@ -54,14 +54,6 @@ dashboard:
   # copy-attach and port-forward one-liners the dashboard offers. Empty = the
   # one-liners omit the ssh hop (plain tmux commands).
   ssh_host: ""
-  # Attention classifier: the dashboard reads each session's last pane line and
-  # classifies it as needs_you / done / working / idle using two case-insensitive
-  # JS regexes. The built-in defaults match ENGLISH phrasing; override them here
-  # if your sessions converse in another language (plain regex — no locale
-  # framework). Empty = built-in default.
-  attention:
-    needs_re: ""   # e.g. '(wil je|zal ik|kun je|welke|\?\s*$)'
-    done_re: ""    # e.g. '(afgerond|helemaal klaar|voltooid|all done)'
 
 ide:
   # IDE backend for wt-ide: none | rider | code-server. `none` (default) keeps

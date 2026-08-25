@@ -32,17 +32,14 @@
   .pill { font-size:11px; padding:2px 8px; border:1px solid var(--line); border-radius:20px; color:var(--mut); }
   .pill.agent-claude { border-color:#d97757; color:#e8a087; }
   .pill.agent-codex  { border-color:#10a37f; color:#3ecf9e; }
-  /* triage: priority selector, attention badge, recap line, sections */
+  /* triage: priority selector, working/waiting badge, recap line, sections */
   .prio { font-size:11px; font-weight:700; border-radius:6px; padding:1px 4px; background:#0b0d11; border:1px solid var(--line); cursor:pointer; }
   .prio-p1 { color:#ff6b6b; border-color:#ff6b6b; } .prio-p2 { color:#e8c07a; border-color:#7a6a3a; } .prio-p3 { color:#8aa0b4; }
   .att { font-size:11px; padding:2px 8px; border-radius:20px; font-weight:600; }
-  .att-need { background:#3a1414; color:#ff9b8a; border:1px solid #ff6b6b; }
   .att-work { background:#10233b; color:#7db8ff; border:1px solid #2f6fb0; }
-  .att-done { background:#10261a; color:#5fd39a; border:1px solid #2f7a52; }
   .att-idle { background:#1a1d24; color:#9aa4b2; border:1px solid var(--line); }
-  .att-stop { background:#1a1d24; color:var(--mut); border:1px solid var(--line); }
   .recap { margin-top:8px; font-size:13px; color:#c6cfdb; padding:6px 10px; border-radius:8px; background:#0b0d11; border-left:3px solid var(--line); }
-  .recap.att-need { border-left-color:#ff6b6b; } .recap.att-done { border-left-color:#2f7a52; } .recap.att-work { border-left-color:#2f6fb0; }
+  .recap.att-work { border-left-color:#2f6fb0; }
   .digest { background:#0e1830; border:1px solid #2f6fb0; border-radius:10px; padding:10px 14px; margin-bottom:16px; font-size:13px; }
   .recover { background:#161a22; border:1px solid var(--line); border-radius:10px; padding:10px 14px; margin-bottom:16px; font-size:13px; }
   .recover .rrow { display:flex; gap:8px; align-items:center; flex-wrap:wrap; padding:5px 0; }
@@ -54,13 +51,9 @@
   .digest .drow { padding:4px 0; }
   .digest .drow.head { display:flex; align-items:center; gap:8px; border-bottom:1px solid var(--line); margin-bottom:6px; padding-bottom:6px; }
   .digest .drow.head button { margin-left:auto; }
-  .nudge { background:#3a1414; border:1px solid #ff6b6b; color:#ffd0c8; border-radius:10px; padding:10px 14px; margin-bottom:16px; font-size:14px; }
-  .nudge b { color:#ff9b8a; }
-  .nudge button { margin-left:6px; }
   .sec { margin-bottom:22px; }
   .sec h2 { font-size:13px; text-transform:uppercase; letter-spacing:.05em; color:var(--mut); margin:0 0 10px; font-weight:700; }
   .sec .cnt { display:inline-block; min-width:18px; text-align:center; background:var(--line); color:var(--fg); border-radius:10px; font-size:11px; padding:0 6px; }
-  .sec-need h2 { color:#ff9b8a; } .sec-need .cnt { background:#3a1414; color:#ff9b8a; }
   .sec-review h2 { color:#7db8ff; } .sec-review .cnt { background:#10233b; color:#7db8ff; }
   .sec-parked h2 { color:var(--mut); }
   .repo { font-size:11px; padding:2px 9px; border-radius:20px; color:#04101f; background:var(--blu); font-weight:600; }
@@ -120,7 +113,6 @@
     </div>
   </form>
   <div id="digest" class="digest" hidden></div>
-  <div id="nudge" class="nudge" hidden></div>
   <div id="recover" class="recover" hidden></div>
   <div id="list"><div class="empty">Loading…</div></div>
 </div>
@@ -156,7 +148,9 @@ const SESSION_COLORS = [
   {name:'pink',   bg:'#2b1e27', bd:'#d072a8'}, {name:'cyan',   bg:'#1e2a2a', bd:'#4ec9c9'},
 ];
 function sessionColor(id){ let h=0; for(let i=0;i<id.length;i++) h=(h*31 + id.charCodeAt(i))>>>0; return SESSION_COLORS[h % SESSION_COLORS.length]; }
-const ATT = { needs_you:{l:'needs you',c:'att-need'}, working:{l:'working',c:'att-work'}, done:{l:'done',c:'att-done'}, idle:{l:'idle',c:'att-idle'}, stopped:{l:'stopped',c:'att-stop'} };
+// Only the factual signal remains: a running session is either working (hard
+// evidence: spinner / command on the prompt) or waiting — the old needs-you/
+// done phrase guesses were removed; the LLM digest reads the pane instead.
 function fmtWait(ms){ if(!ms) return ''; const m=Math.round(ms/60000); if(m<60) return `waiting ${m}m`; const h=Math.floor(m/60); return `waiting ${h}h${String(m%60).padStart(2,'0')}`; }
 function prioSelect(s){ return `<select data-prio="${esc(s.id)}" class="prio prio-${esc(s.priority||'p2')}" title="priority (adjust whenever you like)">`
   + ['p1','p2','p3'].map(p=>`<option value="${p}"${(s.priority||'p2')===p?' selected':''}>${p.toUpperCase()}</option>`).join('') + `</select>`; }
@@ -167,15 +161,15 @@ function card(s){
   const draft = pr && pr.draft ? `<span class="pill">draft</span>` : '';
   const srcLabel = (s.issue && s.issue.kind==='pr' ? 'source PR' : 'issue') + ' ↗';
   const c = sessionColor(s.id);
-  const att = ATT[s.attention] || ATT.idle;
+  const attCls = s.working ? 'att-work' : 'att-idle';
   return `<div class="card" style="background:${c.bg};border-left:4px solid ${c.bd}">
     <div class="row">
       <span class="dot ${s.status}"></span>
       ${prioSelect(s)}
       <span class="repo" title="${esc(s.repoFull||'')}">${esc(s.repo)}</span>
       <span class="name">${esc(s.name)}</span>
-      ${s.status==='running' ? `<span class="att ${att.c}" title="session status">${att.l}${s.attached?' · you are here':''}</span>` : ''}
-      ${s.status==='running' && s.attention!=='working' && s.waitingMs ? `<span class="muted" style="font-size:12px">${fmtWait(s.waitingMs)}</span>` : ''}
+      ${s.status==='running' ? `<span class="att ${attCls}" title="working = spinner or a running command on the prompt">${s.working?'working':'waiting'}${s.attached?' · you are here':''}</span>` : ''}
+      ${s.status==='running' && !s.working && s.waitingMs ? `<span class="muted" style="font-size:12px">${fmtWait(s.waitingMs)}</span>` : ''}
       <span class="pill agent-${esc(s.agent||'claude')}" title="AI agent of this session">${esc(s.agent||'claude')}</span>
       ${s.model ? `<span class="pill" title="model override for this session">${esc(s.model)}</span>` : ''}
       <span class="pill">${esc(s.branch)}</span>
@@ -196,7 +190,7 @@ function card(s){
         <button class="danger" data-rm="${esc(s.id)}">delete</button>
       </span>
     </div>
-    ${s.recap ? `<div class="recap ${att.c}" title="latest state of the session">${esc(s.recap)}</div>` : (s.task ? `<div class="task">${esc(s.task.split('\n')[0])}</div>` : '')}
+    ${s.recap ? `<div class="recap ${attCls}" title="latest state of the session">${esc(s.recap)}</div>` : (s.task ? `<div class="task">${esc(s.task.split('\n')[0])}</div>` : '')}
     ${s.activity ? `<pre class="act">${esc(s.activity)}</pre>` : ''}
   </div>`;
 }
@@ -238,21 +232,20 @@ async function load(){
     const list = $('#list');
     window.ANY_IDE = data.some(x => x.ide && x.ide.running);
     if(!data.length){ list.innerHTML = '<div class="empty">No sessions. Pick a repo and enter a task above.</div>'; return; }
-    // Grouping: WIP first (needs-you by priority then longest waiting, then busy),
-    // then waiting-on-review (derived from the PR state, moves automatically),
-    // then parked (manual, collapsed with a counter), then done/stopped.
-    // Parked/waiting are taken OUT before the WIP split, so a session without a
-    // marker and without a review-required PR behaves exactly as before. The
+    // Grouping: Work in progress -> Waiting on review (derived from the PR
+    // state, moves automatically) -> Parked (manual, collapsed with a counter)
+    // -> Done & stopped. There is deliberately NO needs-you/done split inside
+    // WIP any more: that came from phrase-guessing and was rarely the truth.
+    // WIP sorts by priority, then longest-waiting first (working sessions,
+    // which have no waitingMs, sort after the waiting ones). The
     // parked-beats-waitingReview precedence is resolved server-side.
     const pRank = p => ({p1:0,p2:1,p3:2}[p||'p2']);
     const parked = data.filter(s => s.parked);
     const waitingRev = data.filter(s => !s.parked && s.waitingReview);
     const active = data.filter(s => !s.parked && !s.waitingReview);
-    const needs = active.filter(s => s.status==='running' && (s.attention==='needs_you' || s.attention==='idle'))
+    const wip = active.filter(s => s.status==='running' || s.status==='starting')
       .sort((a,b) => pRank(a.priority)-pRank(b.priority) || (b.waitingMs||0)-(a.waitingMs||0));
-    const busy  = active.filter(s => s.status==='running' && s.attention==='working')
-      .sort((a,b) => pRank(a.priority)-pRank(b.priority));
-    const rest  = active.filter(s => !needs.includes(s) && !busy.includes(s));
+    const rest = active.filter(s => !wip.includes(s));
     const section = (title, arr, cls) => arr.length ? `<div class="sec ${cls}"><h2>${title} <span class="cnt">${arr.length}</span></h2>${arr.map(card).join('')}</div>` : '';
     // parked: collapsed by default — the whole point is getting it out of view
     const parkedSection = parked.length
@@ -260,27 +253,12 @@ async function load(){
         + `<button id="parkedToggle" style="font-size:11px">${window.PARKED_OPEN?'hide':'show'}</button></h2>`
         + (window.PARKED_OPEN ? parked.map(card).join('') : '') + `</div>`
       : '';
-    list.innerHTML = section('① Needs you', needs, 'sec-need')
-      + section('② Working', busy, 'sec-work')
-      + section('③ Waiting on review', waitingRev, 'sec-review')
+    list.innerHTML = section('① Work in progress', wip, 'sec-work')
+      + section('② Waiting on review', waitingRev, 'sec-review')
       + parkedSection
-      + section('④ Done &amp; stopped', rest, 'sec-rest');
+      + section('③ Done &amp; stopped', rest, 'sec-rest');
     const pt = $('#parkedToggle');
     if(pt) pt.onclick = () => { window.PARKED_OPEN = !window.PARKED_OPEN; load(); };
-    // Focus-nudge: you're attached to a session while a HIGHER-priority one needs you.
-    const nudgeEl = $('#nudge');
-    const here = data.find(s => s.attached);
-    const waiting = needs.filter(s => !s.attached);
-    const topWaiting = waiting[0];   // needs[] is already priority-sorted
-    if(here && topWaiting && pRank(topWaiting.priority) < pRank(here.priority)){
-      nudgeEl.hidden = false;
-      nudgeEl.innerHTML = `⚠ <b>${esc(topWaiting.priority.toUpperCase())}</b> "${esc(topWaiting.name)}" is waiting for you`
-        + `${topWaiting.recap ? ` — <span class="muted">${esc(topWaiting.recap.slice(0,80))}</span>` : ''}`
-        + ` &nbsp; <span class="muted">(you are now in ${esc(here.priority.toUpperCase())} "${esc(here.name)}")</span>`
-        + ` <button data-attach="${esc(topWaiting.id)}">⧉ attach</button>`;
-      nudgeEl.querySelectorAll('[data-attach]').forEach(b => b.onclick = () => copyAttach(b.getAttribute('data-attach'), b));
-    } else { nudgeEl.hidden = true; nudgeEl.innerHTML=''; }
-    notifyNeedsYou(data);
     list.querySelectorAll('[data-prio]').forEach(sel => sel.onchange = () => setPriority(sel.getAttribute('data-prio'), sel.value, sel));
     list.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => remove(b.getAttribute('data-rm')));
     list.querySelectorAll('[data-park]').forEach(b => b.onclick = () => setParked(b.getAttribute('data-park'), b.getAttribute('data-parked')!=='1', b));
@@ -357,17 +335,6 @@ async function setParked(sid, parked, btn){
   catch { alert('updating the parked state failed'); }
   load();   // the card moves group; nothing else changes (session keeps running)
 }
-// Browser notification when a p1 session newly needs you (permission-gated, deduped per sid).
-// Parked and waiting-on-review sessions never notify — they are explicitly out of view.
-const notified = new Set();
-function notifyNeedsYou(data){
-  if(!('Notification' in window) || Notification.permission!=='granted') return;
-  for(const s of data){
-    if(s.status==='running' && s.attention==='needs_you' && s.priority==='p1' && !s.attached && !s.parked && !s.waitingReview){
-      if(!notified.has(s.id)){ notified.add(s.id); new Notification('P1 waiting for you: '+s.name, { body: (s.recap||'').slice(0,120) }); }
-    } else notified.delete(s.id);
-  }
-}
 async function startIde(sid, btn){
   if(btn){ btn.disabled = true; btn.textContent = 'starting…'; }
   try {
@@ -440,7 +407,6 @@ $('#refresh').onclick = load;
 
 (function init(){
   const savedRate = localStorage.getItem('rate'); if(savedRate) $('#rate').value = savedRate;
-  if('Notification' in window && Notification.permission==='default'){ try{ Notification.requestPermission(); }catch{} }
   loadMeta().then(loadRepos); load(); applyRate(); loadDigest(); loadRecover();
 })();
 </script>

@@ -114,7 +114,7 @@ if [ "$SYNC_CONFIG" = 1 ]; then
   echo "regenerating the derived env + restarting the dashboard"
   limactl shell "$INSTANCE" -- bash -c 'bash "$HOME/worktree-vm/lib/config/generate-env.sh" && sudo systemctl restart wt-dashboard'
   echo
-  echo "done — config-driven features (repos, clone_paths, dashboard settings, attention regexes) are live."
+  echo "done — config-driven features (repos, clone_paths, dashboard settings) are live."
   echo "Provisioning-level changes (stacks:, agents) additionally need one idempotent run in the guest (no restart):"
   echo "  limactl shell $INSTANCE -- bash worktree-vm/install.sh"
   echo "Platform facts (cpus/memory/ports/disks) still require: limactl delete $INSTANCE, then up.sh (work survives on the data disk)."
