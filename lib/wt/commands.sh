@@ -222,14 +222,14 @@ wt-rm() {
     tmux kill-session -t "=$sid" 2>/dev/null || true
     tmux kill-session -t "=ide-$sid" 2>/dev/null || true
     git -C "$repo" worktree remove --force "$dir" && git -C "$repo" branch -D "$branch" 2>/dev/null
-    rm -f "$WT_META/$sid.agent" "$WT_META/$sid.flags" "$WT_META/$sid.model" "$WT_META/$sid.priority" "$WT_META/$sid.idle_since"
+    rm -f "$WT_META/$sid.agent" "$WT_META/$sid.flags" "$WT_META/$sid.model" "$WT_META/$sid.priority" "$WT_META/$sid.idle_since" "$WT_META/$sid.parked"
   else
     # safe: try to remove FIRST; only kill the sessions if the worktree is clean and removed
     git -C "$repo" worktree remove "$dir" || return 1
     tmux kill-session -t "=$sid" 2>/dev/null || true
     tmux kill-session -t "=ide-$sid" 2>/dev/null || true
     git -C "$repo" branch -d "$branch" 2>/dev/null
-    rm -f "$WT_META/$sid.agent" "$WT_META/$sid.flags" "$WT_META/$sid.model" "$WT_META/$sid.priority" "$WT_META/$sid.idle_since"
+    rm -f "$WT_META/$sid.agent" "$WT_META/$sid.flags" "$WT_META/$sid.model" "$WT_META/$sid.priority" "$WT_META/$sid.idle_since" "$WT_META/$sid.parked"
   fi
   # TOMBSTONE the dashboard session metadata (if any) so a CLI delete is just as
   # restorable as a dashboard delete: move $WT_SESSIONS_DIR/<sid>.json -> archive/
