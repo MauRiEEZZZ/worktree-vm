@@ -92,6 +92,22 @@ function readPriority(sid) {
   const m = readMeta(sid); return (m && PRIORITIES.includes(m.priority)) ? m.priority : 'p2';
 }
 function writePriority(sid, p) { if (!PRIORITIES.includes(p)) return false; try { fs.mkdirSync(WT_META, { recursive: true }); fs.writeFileSync(path.join(WT_META, sid + '.priority'), p + '\n'); return true; } catch { return false; } }
+// MANUAL park: a user statement "this session's context is worth keeping, but it
+// is not work-in-progress" (e.g. a finished review session kept around for
+// follow-up comments). Same marker pattern as priority; the marker's existence
+// is the state, so it survives a rebuild via the persisted ~/.wt-meta.
+// Parking does NOTHING else BY DESIGN: the session keeps running, the worktree
+// stays, nothing is stopped or removed — it is purely a UI grouping. Do not
+// "improve" this by also killing the tmux session.
+function readParked(sid) { return fs.existsSync(path.join(WT_META, sid + '.parked')); }
+function writeParked(sid, on) {
+  try {
+    fs.mkdirSync(WT_META, { recursive: true });
+    if (on) fs.writeFileSync(path.join(WT_META, sid + '.parked'), String(Date.now()) + '\n');
+    else fs.rmSync(path.join(WT_META, sid + '.parked'), { force: true });
+    return true;
+  } catch { return false; }
+}
 // Idle-since tracking: stamp when a session first goes idle, clear when it works again.
 function idleSince(sid, isIdle) {
   const f = path.join(WT_META, sid + '.idle_since');
@@ -207,7 +223,7 @@ async function paneOf(sid) {   // raw pane (last ~40 lines, unfiltered) for atte
 }
 async function prFor(repoFull, branch) {
   const { out, err } = await gh(['pr', 'list', '--repo', repoFull, '--head', branch, '--state', 'all',
-    '--json', 'number,url,title,state,isDraft,statusCheckRollup', '--limit', '1']);
+    '--json', 'number,url,title,state,isDraft,statusCheckRollup,reviewDecision', '--limit', '1']);
   if (err) return null;
   let arr; try { arr = JSON.parse(out); } catch { return null; }
   const pr = arr && arr[0]; if (!pr) return null;
@@ -218,7 +234,18 @@ async function prFor(repoFull, branch) {
     else if (states.some(s => /PENDING|IN_PROGRESS|EXPECTED|QUEUED/i.test(s))) checks = 'pending';
     else checks = 'passing';
   }
-  return { number: pr.number, url: pr.url, title: pr.title, state: pr.state, draft: pr.isDraft, checks };
+  return { number: pr.number, url: pr.url, title: pr.title, state: pr.state, draft: pr.isDraft, checks,
+    reviewDecision: pr.reviewDecision || '' };
+}
+// DERIVED state, deliberately not a marker: a session is "waiting on review"
+// when its OPEN, non-draft PR has reviewDecision REVIEW_REQUIRED — the ball is
+// with a reviewer, so the session is not work-in-progress. CHANGES_REQUESTED is
+// intentionally NOT included: that means the ball is back with the author, i.e.
+// there IS work to do, so the session stays in the WIP view (and APPROVED means
+// it is yours to merge — also actionable). Because this is derived from the PR,
+// the card moves between groups automatically when the PR status changes.
+function isWaitingReview(pr) {
+  return !!(pr && pr.state === 'OPEN' && !pr.draft && pr.reviewDecision === 'REVIEW_REQUIRED');
 }
 async function deployUrl(repoFull, prNumber) {
   if (!DEPLOY_RE) return null;   // feature off without a configured regex
@@ -269,9 +296,15 @@ async function buildSessions() {
     // attention/recap only meaningful for a running session; stopped -> 'stopped'
     const att = running ? attentionOf(pane) : { attention: 'stopped', recap: '' };
     const waitingSince = running ? idleSince(s.sid, att.attention !== 'working') : null;
+    const parked = readParked(s.sid);
     return {
       id: s.sid, repo: s.key, repoFull, name: s.name, branch, status,
       agent: readAgent(s.sid), model: readModel(s.sid), priority: readPriority(s.sid),
+      // Precedence: MANUAL parking always wins over the derived waiting-on-review
+      // state — parking is an explicit user statement, the PR state is inference.
+      // waitingReview is pre-resolved here so every consumer (UI grouping, nudge,
+      // digest) applies the same rule.
+      parked, waitingReview: !parked && isWaitingReview(pr),
       attention: att.attention, recap: att.recap,
       waitingMs: (waitingSince && att.attention !== 'working') ? (Date.now() - waitingSince) : null,
       attached: !!(tmux[s.sid] && tmux[s.sid].attached),
@@ -453,7 +486,11 @@ async function runDigest() {
   lastDigest.running = true;
   try {
     const sessions = await buildSessions();
-    const idle = sessions.filter(s => s.status === 'running' && (s.attention === 'needs_you' || s.attention === 'idle'));
+    // Parked and waiting-on-review sessions are deliberately excluded: both are
+    // "not my problem right now" states, so the digest must not keep demanding
+    // attention for them — that is exactly the clutter parking exists to remove.
+    const idle = sessions.filter(s => s.status === 'running' && (s.attention === 'needs_you' || s.attention === 'idle')
+      && !s.parked && !s.waitingReview);
     if (!idle.length) { lastDigest = { at: Date.now(), items: [], running: false }; return lastDigest; }
     const payload = idle.map(s => ({ sid: s.id, name: s.name, repo: s.repo, priority: s.priority, recap: s.recap, tail: (s.activity || '').split('\n').slice(-8).join('\n') }));
     const prompt = [
@@ -640,6 +677,13 @@ const server = http.createServer(async (req, res) => {
       const body = await readBody(req);
       if (!writePriority(sid, body.priority)) return send(res, 400, { error: 'priority must be p1, p2 or p3' });
       return send(res, 200, { id: sid, priority: body.priority });
+    }
+    if (req.method === 'POST' && /^\/api\/sessions\/[^/]+\/parked$/.test(p)) {
+      // park/unpark = pure UI grouping (see writeParked); one click either way
+      const sid = decodeURIComponent(p.split('/')[3]);
+      const body = await readBody(req);
+      if (!writeParked(sid, !!body.parked)) return send(res, 500, { error: 'could not update the parked marker' });
+      return send(res, 200, { id: sid, parked: !!body.parked });
     }
     if (req.method === 'POST' && /^\/api\/sessions\/[^/]+\/review$/.test(p)) {
       // start an independent Claude+Codex review of this session's work (wt-review); report-only
