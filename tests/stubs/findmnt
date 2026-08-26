@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# findmnt stub: the boot-race check finds nothing stale in tests.
+exit 1

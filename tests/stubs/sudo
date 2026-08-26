@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# sudo stub for the data-disk tests: privileged operations become no-ops (tee
+# drains stdin so pipelines don't break); everything else runs unprivileged.
+case "$1" in
+  tee)  cat >/dev/null; exit 0 ;;
+  chown|mount|umount) exit 0 ;;
+  systemctl) [ -n "${STUB_LOG:-}" ] && echo "sudo systemctl $2 $3" >> "$STUB_LOG"; exit 0 ;;
+  env)  shift; while [ $# -gt 0 ] && [[ "$1" == *=* ]]; do shift; done; exec "$@" ;;
+  *)    exec "$@" ;;
+esac

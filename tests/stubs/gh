@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# gh stub: tests never talk to GitHub. Returns empty results.
+case "$1" in
+  pr|issue|search) echo "[]"; exit 0 ;;
+  repo) exit 1 ;;   # clone attempts must fail loudly in tests (clones are pre-seeded)
+esac
+exit 0

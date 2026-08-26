@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Realistic limactl stub for tests. Faithful in the ways that bit us:
+#  * `disk ls` REJECTS -q with Lima's exact error (only `limactl list` has -q) —
+#    the 2026-08-25 disk-existence bug survived because a permissive stub
+#    accepted it; this stub would have caught it.
+#  * `disk create` dies fatally when the disk already exists, like real Lima.
+#  * `shell <inst> -- bash -c '<script>'` EXECUTES the inner script against
+#    $FAKE_GUEST_HOME with the stub PATH, so sync flows are tested for real.
+# Behaviour is driven by env: FAKE_DISKS / FAKE_INSTANCES (one JSON object per
+# line, like the real --json output), FAKE_GUEST_HOME, STUB_LOG.
+log() { [ -n "${STUB_LOG:-}" ] && echo "$*" >> "$STUB_LOG"; }
+case "$1 ${2:-}" in
+  "disk ls")
+    shift 2
+    for a in "$@"; do
+      [ "$a" = "-q" ] && { echo "Error: unknown shorthand flag: 'q' in -q" >&2; exit 1; }
+    done
+    [ "${1:-}" = "--json" ] || { echo "Error: stub expects --json" >&2; exit 1; }
+    printf '%s\n' "${FAKE_DISKS:-}"; exit 0 ;;
+  "disk create")
+    if printf '%s\n' "${FAKE_DISKS:-}" | grep -q "\"name\":\"$3\""; then
+      echo "level=fatal msg=\"disk \`$3\` already exists\"" >&2; exit 1
+    fi
+    log "limactl disk create $3"; echo "created disk $3"; exit 0 ;;
+esac
+case "$1" in
+  list)
+    [ "${2:-}" = "--json" ] || { echo "Error: stub expects --json" >&2; exit 1; }
+    printf '%s\n' "${FAKE_INSTANCES:-}"; exit 0 ;;
+  validate) log "limactl validate $2"; echo "validate OK: $2"; exit 0 ;;
+  start)    log "limactl start $*"; echo "started: $*"; exit 0 ;;
+  shell)
+    inst="$2"; [ "$3" = "--" ] || exit 1; shift 4          # shell <inst> -- bash [-c] <script>
+    [ "${1:-}" = "-c" ] && shift
+    log "limactl shell($inst): $1"
+    HOME="${FAKE_GUEST_HOME:?}" bash -c "$1"; exit $? ;;
+esac
+echo "limactl stub: unhandled: $*" >&2; exit 1

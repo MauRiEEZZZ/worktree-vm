@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# mountpoint stub: only $FAKE_MOUNT counts as mounted.
+[ "$1" = -q ] && shift
+[ "$1" = "${FAKE_MOUNT:-}" ]
