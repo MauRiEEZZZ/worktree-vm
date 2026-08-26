@@ -32,13 +32,25 @@ github:
   # Org/user whose PRs the dashboard's PR-review watcher polls for
   # review-requests addressed to you. Empty = watcher off.
   review_owner: ""
-  # Model for auto-started review sessions (cheaper than a top-tier default is
-  # sensible for background work). Empty = the agent's own default.
-  review_model: sonnet
 
 agents:
   # Agent that wt-new launches when --agent is not given: claude | codex.
   default: claude
+  # THIS IS A COST KNOB. Model for new dev sessions when no --model is given
+  # (Claude only; an explicit --model or the dashboard dropdown always wins).
+  # Empty = fall back to your ACCOUNT default — that is the conservative,
+  # backwards-compatible behaviour, but NOT necessarily the cheapest: your
+  # account default may well be your most expensive model, and every session
+  # started without thinking about it will burn tokens at that rate. Set a
+  # mid-tier alias here to make cheap the default and expensive an explicit
+  # choice.
+  default_model: ""
+  # Model for ALL review sessions — manual wt-review, the dashboard's review
+  # button AND the PR-review watcher (one key, one meaning; the deprecated
+  # github.review_model still works with a warning). A review is mostly
+  # reading plus one report, so a mid-tier model is plenty.
+  # Empty = review sessions follow default_model / the account default.
+  review_model: sonnet
   # Model aliases offered in the dashboard's model dropdown (Claude only).
   # The empty "default" choice is always offered in addition to these.
   model_choices: [opus, sonnet, haiku]

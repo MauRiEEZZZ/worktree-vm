@@ -22,7 +22,9 @@ expand_home() { case "$1" in "~"|"~/"*) printf '%s%s' "$HOME" "${1#\~}";; *) pri
 DEFAULT_BASE_BRANCH=main
 REVIEW_OWNER=""
 REVIEW_MODEL=sonnet
+REVIEW_MODEL_DEPRECATED=""
 AGENT_DEFAULT=claude
+DEFAULT_MODEL=""
 MODEL_CHOICES=""
 DASHBOARD_PORT=7300
 DEPLOY_URL_REGEX=""
@@ -49,8 +51,10 @@ if [ -f "$CONFIG_FILE" ]; then
       clone_paths.*)          CLONE_PATHS["${key#clone_paths.}"]="$(expand_home "$val")" ;;
       default_base_branch)    DEFAULT_BASE_BRANCH="$val" ;;
       github.review_owner)    REVIEW_OWNER="$val" ;;
-      github.review_model)    REVIEW_MODEL="$val" ;;
+      agents.review_model)    REVIEW_MODEL="$val"; REVIEW_MODEL_SET=1 ;;
+      github.review_model)    REVIEW_MODEL_DEPRECATED="$val" ;;
       agents.default)         AGENT_DEFAULT="$val" ;;
+      agents.default_model)   DEFAULT_MODEL="$val" ;;
       agents.model_choices.[0-9]*) MODEL_CHOICES="${MODEL_CHOICES:+$MODEL_CHOICES }$val" ;;
       dashboard.port)         DASHBOARD_PORT="$val" ;;
       dashboard.deploy_url_regex) DEPLOY_URL_REGEX="$val" ;;
@@ -70,6 +74,20 @@ if [ -f "$CONFIG_FILE" ]; then
   done < <(wt_yaml_flatten "$CONFIG_FILE")
 fi
 
+# ---- deprecation: github.review_model -> agents.review_model ------------------
+# ONE key, ONE meaning: the review model applies to ALL review sessions (manual
+# wt-review, the dashboard button and the PR-review watcher), so it lives under
+# agents:. The old github.review_model still works, loudly, instead of being
+# silently ignored.
+if [ -n "$REVIEW_MODEL_DEPRECATED" ]; then
+  if [ -n "${REVIEW_MODEL_SET:-}" ]; then
+    echo "WARNING: both agents.review_model and the DEPRECATED github.review_model are set — using agents.review_model ('$REVIEW_MODEL'); remove github.review_model" >&2
+  else
+    echo "WARNING: github.review_model is DEPRECATED — move it to agents.review_model (value '$REVIEW_MODEL_DEPRECATED' applied)" >&2
+    REVIEW_MODEL="$REVIEW_MODEL_DEPRECATED"
+  fi
+fi
+
 # ---- write env.sh (bash) ----------------------------------------------------
 mkdir -p "$WT_CONFIG_DIR"
 ENV_SH="$WT_CONFIG_DIR/env.sh"
@@ -80,6 +98,7 @@ ENV_SH="$WT_CONFIG_DIR/env.sh"
   printf 'export WT_REVIEW_OWNER=%q\n'        "$REVIEW_OWNER"
   printf 'export WT_REVIEW_MODEL=%q\n'        "$REVIEW_MODEL"
   printf 'export WT_AGENT_DEFAULT=%q\n'       "$AGENT_DEFAULT"
+  printf 'export WT_DEFAULT_MODEL=%q\n'       "$DEFAULT_MODEL"
   printf 'export WT_MODEL_CHOICES=%q\n'       "$MODEL_CHOICES"
   printf 'export WT_DASHBOARD_PORT=%q\n'      "$DASHBOARD_PORT"
   printf 'export WT_DEPLOY_URL_REGEX=%q\n'    "$DEPLOY_URL_REGEX"
@@ -136,6 +155,7 @@ DASH_ENV="$WT_CONFIG_DIR/dashboard.env"
   env_line WT_MODEL_CHOICES "$MODEL_CHOICES_CSV"
   env_line WT_SSH_HOST      "$SSH_HOST"
   env_line WT_AGENT_DEFAULT "$AGENT_DEFAULT"
+  env_line WT_DEFAULT_MODEL "$DEFAULT_MODEL"
   echo "# PR-review watcher (auto-starts a review session for PRs assigned to you)."
   echo "# Runs only when PR_REVIEW_OWNER is non-empty AND PR_REVIEW_WATCH is not 0."
   echo "# PR_REVIEW_DRYRUN=1 logs what it would do without creating sessions."
