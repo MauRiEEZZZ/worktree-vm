@@ -685,6 +685,19 @@ const server = http.createServer(async (req, res) => {
       if (!writeParked(sid, !!body.parked)) return send(res, 500, { error: 'could not update the parked marker' });
       return send(res, 200, { id: sid, parked: !!body.parked });
     }
+    if (req.method === 'POST' && /^\/api\/sessions\/[^/]+\/model$/.test(p)) {
+      // change the session's model via wt-model: sets the marker and relaunches
+      // (claude --continue keeps the conversation; a live process cannot switch
+      // models without a relaunch). 'default' / '' clears the override.
+      const sid = decodeURIComponent(p.split('/')[3]);
+      const parts = splitSid(sid);
+      if (!parts) return send(res, 400, { error: 'invalid session id' });
+      const body = await readBody(req);
+      const model = (typeof body.model === 'string' && /^[a-z0-9._-]*$/i.test(body.model)) ? (body.model || 'default') : null;
+      if (model === null) return send(res, 400, { error: 'invalid model alias' });
+      spawn('bash', ['-ic', `wt-model ${parts.key} ${JSON.stringify(parts.name)} ${JSON.stringify(model)}`], { detached: true, stdio: 'ignore' }).unref();
+      return send(res, 202, { id: sid, model: model === 'default' ? '' : model, status: 'relaunching' });
+    }
     if (req.method === 'POST' && /^\/api\/sessions\/[^/]+\/review$/.test(p)) {
       // start an independent Claude+Codex review of this session's work (wt-review); report-only
       const sid = decodeURIComponent(p.split('/')[3]);

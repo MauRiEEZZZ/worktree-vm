@@ -32,6 +32,8 @@
   .pill { font-size:11px; padding:2px 8px; border:1px solid var(--line); border-radius:20px; color:var(--mut); }
   .pill.agent-claude { border-color:#d97757; color:#e8a087; }
   .pill.agent-codex  { border-color:#10a37f; color:#3ecf9e; }
+  select.pill { cursor:pointer; }
+  select.pill.model-unknown { border-color:#d29922; color:#e8c07a; }  /* account default = unseen cost */
   /* triage: priority selector, working/waiting badge, recap line, sections */
   .prio { font-size:11px; font-weight:700; border-radius:6px; padding:1px 4px; background:#0b0d11; border:1px solid var(--line); cursor:pointer; }
   .prio-p1 { color:#ff6b6b; border-color:#ff6b6b; } .prio-p2 { color:#e8c07a; border-color:#7a6a3a; } .prio-p3 { color:#8aa0b4; }
@@ -151,6 +153,24 @@ function sessionColor(id){ let h=0; for(let i=0;i<id.length;i++) h=(h*31 + id.ch
 // Only the factual signal remains: a running session is either working (hard
 // evidence: spinner / command on the prompt) or waiting — the old needs-you/
 // done phrase guesses were removed; the LLM digest reads the pane instead.
+
+// EFFECTIVE model per card, never the word "default": either the recorded
+// per-session model, or — when no override is recorded — an honest "account
+// default" (we cannot read the account setting from out here, and inventing a
+// name would hide exactly the cost this exists to surface: twelve sessions
+// once showed "(default)" while all silently ran the most expensive model).
+// The select doubles as the upgrade route: picking a model runs wt-model,
+// which relaunches with the conversation kept (claude --continue).
+function modelCtl(s){
+  if((s.agent||'claude')!=='claude') return '';   // model aliases are Claude's
+  const cur = s.model || '';
+  const title = cur
+    ? `model this session actually runs: ${cur} (pick another to change it — relaunch keeps the conversation)`
+    : 'no per-session model recorded: this session runs your ACCOUNT default, which may be your most expensive model (pick one to pin it — relaunch keeps the conversation)';
+  const opts = [`<option value=""${cur===''?' selected':''}>account default</option>`]
+    .concat((META.models||[]).map(m=>`<option value="${esc(m)}"${cur===m?' selected':''}>${esc(m)}</option>`));
+  return `<select data-model="${esc(s.id)}" data-cur="${esc(cur)}" class="pill${cur?'':' model-unknown'}" title="${esc(title)}">${opts.join('')}</select>`;
+}
 function fmtWait(ms){ if(!ms) return ''; const m=Math.round(ms/60000); if(m<60) return `waiting ${m}m`; const h=Math.floor(m/60); return `waiting ${h}h${String(m%60).padStart(2,'0')}`; }
 function prioSelect(s){ return `<select data-prio="${esc(s.id)}" class="prio prio-${esc(s.priority||'p2')}" title="priority (adjust whenever you like)">`
   + ['p1','p2','p3'].map(p=>`<option value="${p}"${(s.priority||'p2')===p?' selected':''}>${p.toUpperCase()}</option>`).join('') + `</select>`; }
@@ -171,7 +191,7 @@ function card(s){
       ${s.status==='running' ? `<span class="att ${attCls}" title="working = spinner or a running command on the prompt">${s.working?'working':'waiting'}${s.attached?' · you are here':''}</span>` : ''}
       ${s.status==='running' && !s.working && s.waitingMs ? `<span class="muted" style="font-size:12px">${fmtWait(s.waitingMs)}</span>` : ''}
       <span class="pill agent-${esc(s.agent||'claude')}" title="AI agent of this session">${esc(s.agent||'claude')}</span>
-      ${s.model ? `<span class="pill" title="model override for this session">${esc(s.model)}</span>` : ''}
+      ${modelCtl(s)}
       <span class="pill">${esc(s.branch)}</span>
       ${draft}${checks}
       <span class="links">
@@ -262,6 +282,7 @@ async function load(){
     list.querySelectorAll('[data-prio]').forEach(sel => sel.onchange = () => setPriority(sel.getAttribute('data-prio'), sel.value, sel));
     list.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => remove(b.getAttribute('data-rm')));
     list.querySelectorAll('[data-park]').forEach(b => b.onclick = () => setParked(b.getAttribute('data-park'), b.getAttribute('data-parked')!=='1', b));
+    list.querySelectorAll('[data-model]').forEach(sel => sel.onchange = () => setModel(sel.getAttribute('data-model'), sel.value, sel));
     list.querySelectorAll('[data-attach]').forEach(b => b.onclick = () => copyAttach(b.getAttribute('data-attach'), b));
     list.querySelectorAll('[data-resume]').forEach(b => b.onclick = () => resume(b.getAttribute('data-resume'), b));
     list.querySelectorAll('[data-review]').forEach(b => b.onclick = () => review(b.getAttribute('data-review'), b));
@@ -328,6 +349,17 @@ async function restoreSession(sid, btn){
     const j = await r.json(); if(j.error){ alert(j.error); if(btn){btn.disabled=false;btn.textContent='↩ restore';} return; }
   }catch{ alert('restore failed'); if(btn){btn.disabled=false;btn.textContent='↩ restore';} return; }
   loadRecover(); load();
+}
+async function setModel(sid, model, sel){
+  const label = model || 'account default';
+  if(!confirm(`Switch "${sid}" to ${label}? The session relaunches with the new model; the conversation is kept (claude --continue), but anything mid-generation right now is interrupted.`)){
+    sel.value = sel.getAttribute('data-cur') || ''; return;   // revert the visual choice
+  }
+  sel.disabled = true;
+  try { await fetch('/api/sessions/'+encodeURIComponent(sid)+'/model', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({model})}); }
+  catch { alert('changing the model failed'); }
+  [1500,5000].forEach(ms=>setTimeout(load, ms));
+  load();
 }
 async function setParked(sid, parked, btn){
   if(btn){ btn.disabled = true; }
