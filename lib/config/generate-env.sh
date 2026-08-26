@@ -22,7 +22,7 @@ expand_home() { case "$1" in "~"|"~/"*) printf '%s%s' "$HOME" "${1#\~}";; *) pri
 DEFAULT_BASE_BRANCH=main
 REVIEW_OWNER=""
 REVIEW_MODEL=""
-REVIEW_MODEL_DEPRECATED=""
+WATCHER_MODEL=""
 AGENT_DEFAULT=claude
 DEFAULT_MODEL=""
 MODEL_CHOICES=""
@@ -51,8 +51,8 @@ if [ -f "$CONFIG_FILE" ]; then
       clone_paths.*)          CLONE_PATHS["${key#clone_paths.}"]="$(expand_home "$val")" ;;
       default_base_branch)    DEFAULT_BASE_BRANCH="$val" ;;
       github.review_owner)    REVIEW_OWNER="$val" ;;
-      agents.review_model)    REVIEW_MODEL="$val"; REVIEW_MODEL_SET=1 ;;
-      github.review_model)    REVIEW_MODEL_DEPRECATED="$val" ;;
+      agents.review_model)    REVIEW_MODEL="$val" ;;
+      github.review_model)    WATCHER_MODEL="$val" ;;
       agents.default)         AGENT_DEFAULT="$val" ;;
       agents.default_model)   DEFAULT_MODEL="$val" ;;
       agents.model_choices.[0-9]*) MODEL_CHOICES="${MODEL_CHOICES:+$MODEL_CHOICES }$val" ;;
@@ -74,19 +74,12 @@ if [ -f "$CONFIG_FILE" ]; then
   done < <(wt_yaml_flatten "$CONFIG_FILE")
 fi
 
-# ---- deprecation: github.review_model -> agents.review_model ------------------
-# ONE key, ONE meaning: the review model applies to ALL review sessions (manual
-# wt-review, the dashboard button and the PR-review watcher), so it lives under
-# agents:. The old github.review_model still works, loudly, instead of being
-# silently ignored.
-if [ -n "$REVIEW_MODEL_DEPRECATED" ]; then
-  if [ -n "${REVIEW_MODEL_SET:-}" ]; then
-    echo "WARNING: both agents.review_model and the DEPRECATED github.review_model are set — using agents.review_model ('$REVIEW_MODEL'); remove github.review_model" >&2
-  else
-    echo "WARNING: github.review_model is DEPRECATED — move it to agents.review_model (value '$REVIEW_MODEL_DEPRECATED' applied)" >&2
-    REVIEW_MODEL="$REVIEW_MODEL_DEPRECATED"
-  fi
-fi
+# NOTE on the model keys: there are deliberately THREE, with three different
+# uses and typically three different values — do NOT merge them (it was tried;
+# the reasons live in config.example.yaml / config-reference.md):
+#   agents.default_model  -> dev sessions (wt-new)
+#   agents.review_model   -> pre-PR self-review (wt-review + dashboard button)
+#   github.review_model   -> the PR-review watcher (someone else's PR)
 
 # ---- write env.sh (bash) ----------------------------------------------------
 mkdir -p "$WT_CONFIG_DIR"
@@ -161,7 +154,7 @@ DASH_ENV="$WT_CONFIG_DIR/dashboard.env"
   echo "# PR_REVIEW_DRYRUN=1 logs what it would do without creating sessions."
   env_line PR_REVIEW_WATCH  "1"
   env_line PR_REVIEW_OWNER  "$REVIEW_OWNER"
-  env_line PR_REVIEW_MODEL  "$REVIEW_MODEL"
+  env_line PR_REVIEW_MODEL  "$WATCHER_MODEL"
   env_line DEPLOY_RE        "$DEPLOY_URL_REGEX"
   echo "# Attention digest: cheap LLM triage of idle sessions. On-demand by default"
   echo "# (dashboard button); set DIGEST_POLL_MS>0 for a timer. DIGEST=0 disables."

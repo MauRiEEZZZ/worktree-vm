@@ -184,16 +184,15 @@ wt-review() {
       *) pos+=("$1"); shift;;
     esac
   done
-  # ONE key (agents.review_model) governs ALL review sessions: this command
-  # covers both manual use and the dashboard's review button (which spawns
-  # wt-review); the PR-review watcher reads the same key via PR_REVIEW_MODEL.
-  # An explicit --model wins; claude only (the aliases are Claude's).
+  # agents.review_model governs PRE-PR SELF-REVIEW sessions: this command, both
+  # manual and via the dashboard's review button (which spawns wt-review). The
+  # PR-review WATCHER has its own key (github.review_model) on purpose — three
+  # model keys, three uses, three failure economics; see config-reference.md
+  # before merging anything. An explicit --model wins; claude only.
   # When the key is empty, reviews run on the ACCOUNT default ('default'
-  # sentinel) — deliberately NOT on agents.default_model: a review must never
-  # silently inherit whatever cheap tier the dev sessions were pushed to. Which
-  # tier reviews deserve is the owner's call; see config.example.yaml for the
-  # recommended split (a finding a weak reviewer misses costs a day of external
-  # review round-trip, not tokens).
+  # sentinel) — deliberately NOT on agents.default_model: a self-review must
+  # never silently inherit whatever tier the dev sessions were pushed to (a
+  # weak reviewer stamping "no findings" is worse than no reviewer).
   [ -z "$model" ] && [ "$agent" = claude ] && model="${WT_REVIEW_MODEL:-default}"
   if [ "${#pos[@]}" -ge 2 ]; then
     key="${pos[0]}"; name="${pos[1]}"

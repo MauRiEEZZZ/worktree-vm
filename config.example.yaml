@@ -32,34 +32,44 @@ github:
   # Org/user whose PRs the dashboard's PR-review watcher polls for
   # review-requests addressed to you. Empty = watcher off.
   review_owner: ""
+  # Model for WATCHER review sessions (auto-started for PRs where your review
+  # is requested). WHY ITS OWN KEY: that is someone ELSE's PR — you read the
+  # report and decide yourself, so a missed nuance costs you no lead time.
+  # Mid-tier is the sensible spend here. Empty = your account default.
+  review_model: ""
 
 agents:
   # Agent that wt-new launches when --agent is not given: claude | codex.
   default: claude
-  # THESE TWO ARE COST/QUALITY KNOBS, independently settable; neither points
-  # anywhere by itself (empty = your ACCOUNT default — conservative and
-  # backwards-compatible, but NOT necessarily cheap: that may be your most
-  # expensive model, and every session started without thinking burns at that
-  # rate).
   #
-  # Recommended split, learned the expensive way: DEV sessions cheap, REVIEW
-  # sessions strong. Dev work is largely pattern-following inside a repo with
-  # explicit conventions AND dev sessions run for hours — weighted by runtime
-  # that is where the burn is, so a cheap default wins big at small risk.
-  # Reviews are short bursts (read, one report, done), and a finding your own
-  # review misses does not cost tokens — it costs a full day of external
-  # comment -> fix -> re-review round-trip. That is where the strong model
-  # earns its keep.
+  # THE MODEL KEYS — there are deliberately THREE (this one, agents.review_model
+  # and github.review_model above), with three different uses and typically
+  # three different values. Do not "clean them up" into one; each reason below
+  # is why the previous merges were reverted. None of them is hardwired to any
+  # model, and empty always means: fall back to your ACCOUNT default (which may
+  # be your most expensive model — these are cost/quality knobs).
   #
-  # Model for new dev sessions when no --model is given (Claude only; an
+  # Model for new DEV sessions when no --model is given (Claude only; an
   # explicit --model or the dashboard dropdown always wins; the literal
-  # '--model default' forces the account default).
+  # '--model default' forces the account default; change a live session later
+  # with wt-model). WHY: recommended MID-TIER, explicitly not the cheapest —
+  # dev work in a real codebase is not purely pattern-following: finding a
+  # second bug path while fixing the first, checking whether a component
+  # actually exists instead of inventing it, refusing to push because the
+  # conventions say so. That behaviour is the first thing the cheapest tier
+  # loses. The CHEAPEST tier is fine for mechanical work (dependency-bump
+  # follow-ups, renames, doc-only changes) — pass it per session with --model;
+  # that is a recommendation, not enforcement.
   default_model: ""
-  # Model for ALL review sessions — manual wt-review, the dashboard's review
-  # button AND the PR-review watcher (one key, one meaning; the deprecated
-  # github.review_model still works with a warning). Empty = the account
-  # default — deliberately NOT default_model, so reviews never silently
-  # inherit the cheap dev tier.
+  # Model for PRE-PR SELF-REVIEW sessions (manual wt-review and the dashboard's
+  # review button). WHY ITS OWN KEY, and why the STRONGEST tier you are willing
+  # to pay for: this is the gate that saves a full day of external
+  # comment -> fix -> re-review round-trip, and the work is not reading — it is
+  # forming hypotheses, building and running experiments, reverting fixes to
+  # prove tests discriminate. The failure mode is asymmetric: a weak reviewer
+  # reporting "no findings" is WORSE than no reviewer, because the work then
+  # proceeds with a stamp on it. Empty = your account default — deliberately
+  # NOT default_model, so a self-review never silently inherits the dev tier.
   review_model: ""
   # Model aliases offered in the dashboard's model dropdown (Claude only).
   # The empty "default" choice is always offered in addition to these.

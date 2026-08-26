@@ -58,21 +58,41 @@ containing `#` or `:`. A leading `~/` in path values expands to `$HOME`.
 | key | default | meaning |
 |---|---|---|
 | `review_owner` | `""` | GitHub org/user the dashboard's PR-review watcher scopes its `--review-requested=@me` search to. **Empty = watcher off.** |
+| `review_model` | `""` | model for **watcher** review sessions (auto-started for PRs where your review is requested). Empty = account default. |
 
 ### `agents`
 
 | key | default | meaning |
 |---|---|---|
 | `default` | `claude` | agent `wt-new` launches without `--agent`: `claude` or `codex`. |
-| `default_model` | `""` | model for new **dev** sessions when no `--model` is given (Claude only; explicit `--model`/the dashboard dropdown always wins, and the literal `--model default` forces the account default). Empty = your ACCOUNT default — conservative and backwards-compatible, but not necessarily cheap: that may be your most expensive model. |
-| `review_model` | `""` | model for **all** review sessions — manual `wt-review`, the dashboard's review button and the PR-review watcher (one key, one meaning; `wt-review --model` overrides per review). Empty = the account default — deliberately **not** `default_model`, so a review never silently inherits the cheap dev tier. The old `github.review_model` still works but warns at generate time — move it. |
+| `default_model` | `""` | model for new **dev** sessions when no `--model` is given (Claude only; explicit `--model`/the dashboard dropdown always wins; the literal `--model default` forces the account default). Empty = your ACCOUNT default. |
+| `review_model` | `""` | model for **pre-PR self-review** sessions — manual `wt-review` and the dashboard's review button (`wt-review --model` overrides per review). Empty = the account default — deliberately **not** `default_model`, so a self-review never silently inherits the dev tier. |
+| `model_choices` | `[opus, sonnet, haiku]` | model aliases offered in the dashboard's model dropdown (Claude only; "account default" is always offered too). |
 
-The two keys are independent and neither is hardwired towards cheap or
-expensive. Recommended split: **dev cheap, review strong** — dev sessions run
-for hours and are largely pattern-following (that is where the token burn is),
-while reviews are short bursts whose misses cost a *day* of external
-comment→fix→re-review round-trip rather than tokens. Set both in your config;
-adjust per session with `--model` / `wt-model` when one needs more.
+**Why three model keys, not one** (they have been merged twice and reverted
+twice — do not "clean this up"): the three uses have different failure
+economics, so they typically carry three different values.
+
+- **Dev** (`agents.default_model`): recommend **mid-tier, not the cheapest**.
+  Dev work in a real codebase is not purely pattern-following — spotting a
+  second bug path while fixing the first, verifying a component exists instead
+  of inventing it, refusing to push because the conventions say so. That
+  behaviour is the first casualty of the cheapest tier. The cheapest tier *is*
+  fine for mechanical work (dependency-bump follow-ups, renames, doc-only
+  changes) — pass it per session with `--model`; recommendation, not
+  enforcement.
+- **Pre-PR self-review** (`agents.review_model`): recommend the **strongest
+  tier you will pay for**. This is the gate that saves a day of external
+  comment→fix→re-review round-trip, and the work is hypothesis-forming and
+  experiment-running, not reading. The failure mode is asymmetric: a weak
+  reviewer reporting "no findings" is worse than no reviewer — the work then
+  proceeds with a stamp on it.
+- **Watcher** (`github.review_model`): recommend **mid-tier**. It reviews
+  someone *else's* PR; you read the report and decide yourself, so a missed
+  nuance costs no lead time.
+
+None of the keys is hardwired to a model; empty always falls back to the
+account default. Adjust a live session any time with `--model` / `wt-model`.
 | `model_choices` | `[opus, sonnet, haiku]` | model aliases offered in the dashboard's model dropdown (Claude only; "account default" is always offered too). |
 
 Changing a session's model later: `wt-model <repo> <name> <model|default>` (or the
