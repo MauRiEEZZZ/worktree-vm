@@ -32,11 +32,15 @@ wt-new() {
   command -v "$agent" >/dev/null 2>&1 || { echo "agent '$agent' is not installed on this machine"; return 1; }
   # COST KNOB: without an explicit --model, fall back to the configured
   # agents.default_model (claude only — the aliases are Claude's). An explicit
-  # --model always wins; empty config = the account default, exactly as before.
-  # This is the single decision point: the dashboard's create flow spawns wt-new,
-  # so it inherits the same rule. The effective model lands in the session
-  # marker, so wt-resume, wt-ls and the dashboard all show/keep what really runs.
-  [ -z "$model" ] && [ "$agent" = claude ] && model="$WT_DEFAULT_MODEL"
+  # --model always wins, and the literal '--model default' explicitly requests
+  # the ACCOUNT default, bypassing agents.default_model (wt-review uses this so
+  # an empty review model never silently inherits the dev default). Empty
+  # config = the account default, exactly as before. This is the single
+  # decision point: the dashboard's create flow spawns wt-new, so it inherits
+  # the same rule. The effective model lands in the session marker, so
+  # wt-resume, wt-ls and the dashboard all show/keep what really runs.
+  if [ "$model" = default ]; then model=""
+  elif [ -z "$model" ] && [ "$agent" = claude ]; then model="$WT_DEFAULT_MODEL"; fi
   local repo; repo="$(_wt_ensure "$key")" || return 1
   local base; base="$(_wt_base "$repo")"
   local dir="$WT_TREES/$key/$name" branch="feat/$name" sid; sid="$(_wt_sid "$key" "$name")"
@@ -180,12 +184,17 @@ wt-review() {
       *) pos+=("$1"); shift;;
     esac
   done
-  # A review is mostly reading plus one report — a mid-tier model is plenty. ONE
-  # key (agents.review_model) governs ALL review sessions: this command covers
-  # both manual use and the dashboard's review button (which spawns wt-review);
-  # the PR-review watcher reads the same key via PR_REVIEW_MODEL. An explicit
-  # --model wins; claude only (the aliases are Claude's).
-  [ -z "$model" ] && [ "$agent" = claude ] && model="$WT_REVIEW_MODEL"
+  # ONE key (agents.review_model) governs ALL review sessions: this command
+  # covers both manual use and the dashboard's review button (which spawns
+  # wt-review); the PR-review watcher reads the same key via PR_REVIEW_MODEL.
+  # An explicit --model wins; claude only (the aliases are Claude's).
+  # When the key is empty, reviews run on the ACCOUNT default ('default'
+  # sentinel) — deliberately NOT on agents.default_model: a review must never
+  # silently inherit whatever cheap tier the dev sessions were pushed to. Which
+  # tier reviews deserve is the owner's call; see config.example.yaml for the
+  # recommended split (a finding a weak reviewer misses costs a day of external
+  # review round-trip, not tokens).
+  [ -z "$model" ] && [ "$agent" = claude ] && model="${WT_REVIEW_MODEL:-default}"
   if [ "${#pos[@]}" -ge 2 ]; then
     key="${pos[0]}"; name="${pos[1]}"
   elif [ "${#pos[@]}" -eq 0 ]; then

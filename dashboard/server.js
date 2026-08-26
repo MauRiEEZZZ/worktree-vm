@@ -34,7 +34,7 @@ const PR_REVIEW_WATCH = process.env.PR_REVIEW_WATCH !== '0';          // on by d
 const PR_REVIEW_DRYRUN = process.env.PR_REVIEW_DRYRUN === '1';        // log what it would create, don't spawn
 const PR_REVIEW_POLL_MS = Number(process.env.PR_REVIEW_POLL_MS) || 300000;  // own background cadence (default 5 min)
 const PR_REVIEW_OWNER = process.env.PR_REVIEW_OWNER || '';            // org/user to scope the search to; empty = watcher off
-const PR_REVIEW_MODEL = process.env.PR_REVIEW_MODEL || 'sonnet';      // model for auto-reviews (cheaper than a top-tier default); '' = inherit default
+const PR_REVIEW_MODEL = process.env.PR_REVIEW_MODEL || '';            // model for auto-review sessions (agents.review_model); '' = account default
 const REVIEW_SEEN = path.join(WT_META, 'review-seen.json');          // ledger (NOT in META_DIR, which is scanned as sessions): <owner/repo>#<n> already handled
 // Attention-digest: a cheap LLM pass over idle sessions -> ranked "who needs you, why, next".
 const DIGEST = process.env.DIGEST !== '0';                           // feature on by default (on-demand)
@@ -466,7 +466,9 @@ async function pollReviewRequests() {
       const name = `review-${pr.number}`;
       if (fs.existsSync(path.join(WT_TREES, key, name))) { seen[ledgerKey] = { sid: sidOf(key, name), at: Date.now() }; writeSeen(seen); continue; }
       if (PR_REVIEW_DRYRUN) { console.log(`[pr-review] DRYRUN would start ${sidOf(key, name)} for ${ledgerKey} — "${pr.title}"`); continue; }
-      const r = await createSession({ repo: key, agent: 'claude', name, auto: true, denyPost: true, model: PR_REVIEW_MODEL, prompt: reviewPrompt(pr, repos[key]) });
+      // model: the shared review key; 'default' = explicitly the account default,
+      // so an empty key never lets a review inherit the cheap dev default_model.
+      const r = await createSession({ repo: key, agent: 'claude', name, auto: true, denyPost: true, model: PR_REVIEW_MODEL || 'default', prompt: reviewPrompt(pr, repos[key]) });
       if (r && !r.error) { seen[ledgerKey] = { sid: r.id, at: Date.now() }; writeSeen(seen); console.log(`[pr-review] started ${r.id} for ${ledgerKey}`); }
       else { seen[ledgerKey] = { error: r && r.error, at: Date.now() }; writeSeen(seen); console.error(`[pr-review] create failed for ${ledgerKey}:`, r && r.error); }
     }

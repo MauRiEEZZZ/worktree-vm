@@ -64,8 +64,15 @@ containing `#` or `:`. A leading `~/` in path values expands to `$HOME`.
 | key | default | meaning |
 |---|---|---|
 | `default` | `claude` | agent `wt-new` launches without `--agent`: `claude` or `codex`. |
-| `default_model` | `""` | **the cost knob**: model for new sessions when no `--model` is given (Claude only; explicit `--model`/the dashboard dropdown always wins). Empty = your ACCOUNT default — conservative and backwards-compatible, but not necessarily cheap: that may be your most expensive model, and every thoughtlessly started session burns at that rate. Set a mid-tier alias to make cheap the default and expensive an explicit choice. |
-| `review_model` | `sonnet` | model for **all** review sessions — manual `wt-review`, the dashboard's review button and the PR-review watcher (one key, one meaning). Reviews are mostly reading plus one report, so mid-tier is plenty; `wt-review --model` overrides per review. Empty = follow `default_model`/the account default. The old `github.review_model` still works but warns at generate time — move it. |
+| `default_model` | `""` | model for new **dev** sessions when no `--model` is given (Claude only; explicit `--model`/the dashboard dropdown always wins, and the literal `--model default` forces the account default). Empty = your ACCOUNT default — conservative and backwards-compatible, but not necessarily cheap: that may be your most expensive model. |
+| `review_model` | `""` | model for **all** review sessions — manual `wt-review`, the dashboard's review button and the PR-review watcher (one key, one meaning; `wt-review --model` overrides per review). Empty = the account default — deliberately **not** `default_model`, so a review never silently inherits the cheap dev tier. The old `github.review_model` still works but warns at generate time — move it. |
+
+The two keys are independent and neither is hardwired towards cheap or
+expensive. Recommended split: **dev cheap, review strong** — dev sessions run
+for hours and are largely pattern-following (that is where the token burn is),
+while reviews are short bursts whose misses cost a *day* of external
+comment→fix→re-review round-trip rather than tokens. Set both in your config;
+adjust per session with `--model` / `wt-model` when one needs more.
 | `model_choices` | `[opus, sonnet, haiku]` | model aliases offered in the dashboard's model dropdown (Claude only; "account default" is always offered too). |
 
 Changing a session's model later: `wt-model <repo> <name> <model|default>` (or the

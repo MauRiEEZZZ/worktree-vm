@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # parse-yaml.sh — flatten the worktree-vm YAML config subset into "path<TAB>value"
-# lines (e.g. "github.review_owner<TAB>sonnet", "stacks.0<TAB>dotnet").
+# lines (e.g. "dashboard.port<TAB>7300", "stacks.0<TAB>dotnet").
 #
 # Supported subset (documented in config.example.yaml): 2-space-indented maps,
 # scalar values, inline lists ([a, b]) and dash lists. Comments (# ...) are

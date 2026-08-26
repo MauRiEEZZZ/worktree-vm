@@ -21,7 +21,7 @@ expand_home() { case "$1" in "~"|"~/"*) printf '%s%s' "$HOME" "${1#\~}";; *) pri
 # ---- defaults ---------------------------------------------------------------
 DEFAULT_BASE_BRANCH=main
 REVIEW_OWNER=""
-REVIEW_MODEL=sonnet
+REVIEW_MODEL=""
 REVIEW_MODEL_DEPRECATED=""
 AGENT_DEFAULT=claude
 DEFAULT_MODEL=""

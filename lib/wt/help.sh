@@ -21,9 +21,10 @@ wt-new <repo> <name> [--agent claude|codex] [--auto] [--deny-post] [--model <ali
   nothing goes to GitHub without your approval, but you CAN approve it. The choice
   is remembered, so wt-resume relaunches with the same flags.
   --model <alias> overrides the model (aliases come from agents.model_choices in
-  your config). Without --model, the configured agents.default_model applies
-  (claude only); if that is empty too, the session runs on your ACCOUNT default —
-  which may be your most expensive model. Change it later with wt-model.
+  your config); the literal '--model default' forces the ACCOUNT default.
+  Without --model, the configured agents.default_model applies (claude only);
+  if that is empty too, the session runs on your account default — which may be
+  your most expensive model. Change it later with wt-model.
   The optional task = opening prompt. --task-b64 <b64> = quoting-safe task.
   --branch <existing> checks out an existing branch (e.g. the branch of a PR you
   want to continue) instead of creating a new feat/<name>.
@@ -68,8 +69,10 @@ wt-review [<repo> <name>] [--scope committed|working|all] [--agent claude|codex]
   to GitHub (--auto --deny-post). Read the findings via Remote Control.
   scope: committed = committed diff only; working (default) = + uncommitted
   tracked changes; all = + untracked files. Clean up with wt-rm <repo> <name>-review.
-  The review runs on agents.review_model (default sonnet) — reviews are mostly
-  reading plus one report; --model overrides for the odd heavyweight one.
+  The review runs on agents.review_model (empty = your account default — never
+  the dev default_model); --model overrides per review. Tip: reviews are short
+  bursts, and a finding your own review misses costs a day of external
+  re-review round-trip — a strong review model usually pays for itself.
 H
 ;;
     wt-ide) cat <<'H'
