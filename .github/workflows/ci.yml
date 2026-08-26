@@ -1,0 +1,48 @@
+# CI for worktree-vm.
+#
+# Why ubuntu-latest matters here: GitHub's runners are amd64, and the dev VM
+# this repo is built and tested on is arm64 — so every CI run exercises exactly
+# the architecture we cannot test locally. Until CI existed, the only amd64
+# evidence was a single external user's WSL2 install. The test suite contains
+# no architecture assumptions, so it must stay green on both (it also runs on
+# the arm64 VM before every push).
+#
+# What CI does NOT prove: a real VM boot (Lima on macOS), WSL2 on real Windows,
+# and actual browser launches of the playwright stack. Those remain manual
+# smoke tests — see the Testing section in the README.
+name: ci
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24   # matches what provision/20-node.sh installs in the guest
+
+      - name: bash -n on every shell file (incl. the extension-less test stubs)
+        run: |
+          set -e
+          for f in $(git ls-files '*.sh') tests/stubs/*; do bash -n "$f"; done
+
+      - name: node --check
+        run: node --check dashboard/server.js
+
+      - name: shellcheck (error severity)
+        run: |
+          command -v shellcheck >/dev/null || { sudo apt-get update -q && sudo apt-get install -y -q shellcheck; }
+          # shellcheck disable=SC2046
+          shellcheck -S error -s bash $(git ls-files '*.sh')
+
+      - name: sanitation grep (encoded patterns — see tests/sanitize.sh)
+        run: bash tests/sanitize.sh
+
+      - name: test suite
+        run: |
+          command -v tmux >/dev/null || { sudo apt-get update -q && sudo apt-get install -y -q tmux; }
+          bash tests/run.sh

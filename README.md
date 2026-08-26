@@ -84,6 +84,21 @@ Both install paths have been run for real — one per architecture:
 Successful runs and any field fixes are tracked in
 [docs/field-notes-wsl.md](docs/field-notes-wsl.md).
 
+## Testing
+
+`bash tests/run.sh` — zero dependencies beyond what the repo already needs
+(bash, git, tmux, node); stubs stand in for `limactl` and `gh`. Every test
+names the real, dated bug it covers, so the suite doubles as the bug history.
+The tests isolate themselves hard (fresh `$HOME`, a test-private tmux socket):
+they are safe to run on a VM with live sessions.
+
+CI (GitHub Actions, `ubuntu-latest`) runs the suite plus `bash -n`,
+`node --check`, shellcheck and a sanitation grep — on **amd64**, deliberately
+complementing the arm64 dev VM. What CI does **not** prove, and stays a manual
+smoke test: a real Lima VM boot on macOS, WSL2 on real Windows (see
+[docs/field-notes-wsl.md](docs/field-notes-wsl.md)), and actual browser
+launches of the playwright stack.
+
 ## Docs
 
 - [Install on macOS (Lima)](docs/install-macos-lima.md) — includes the persistent-data-disk scheme
