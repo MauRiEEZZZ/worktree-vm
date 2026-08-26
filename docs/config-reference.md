@@ -127,6 +127,15 @@ your most expensive model).
 | `port` | `7300` | dashboard HTTP port (bound to 127.0.0.1 in the guest; forwarded on Lima, localhost-forwarded on WSL2). |
 | `deploy_url_regex` | `""` | regex that recognises deploy/preview URLs in PR bodies/comments; first match becomes the card's "deploy" link. **Empty = feature off** (and no extra `gh` calls). |
 | `ssh_host` | `""` | this VM's ssh alias as reachable *from your workstation*; used in the copy-attach / port-forward one-liners. Empty = plain `tmux attach` commands without the ssh hop. |
+| `task_template` | `""` | instruction the dashboard appends when you submit a **bare** issue/PR URL with no prompt of your own — your house rules for how work gets done. The factual lines (which issue, which repo, which branch) are always generated; this replaces only the closing `Plan, implement, run the relevant tests, keep commits scoped.` line. Empty = that default. |
+
+The parser takes single-line scalars only, so a multi-step `task_template` travels
+as one line: a literal `\n` becomes a newline. Placeholders are substituted before
+the session sees the prompt — `{repo}` (owner/name), `{repo_key}`, `{name}`,
+`{sid}`, `{branch}`, `{kind}` (`issue`/`pr`), `{number}`, `{url}`, `{title}`,
+`{meta_dir}` (`~/.wt-meta`, handy for pointing a session at a file that must
+survive its worktree). An unknown placeholder is left untouched rather than
+blanked, so a typo shows up in the session prompt instead of vanishing.
 
 ### `ide`
 

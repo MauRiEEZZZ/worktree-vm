@@ -28,6 +28,7 @@ DEFAULT_MODEL=""
 MODEL_CHOICES=""
 DASHBOARD_PORT=7300
 DEPLOY_URL_REGEX=""
+TASK_TEMPLATE=""
 SSH_HOST=""
 IDE_BACKEND=none
 IDE_PORT_BASE=6000
@@ -58,6 +59,7 @@ if [ -f "$CONFIG_FILE" ]; then
       agents.model_choices.[0-9]*) MODEL_CHOICES="${MODEL_CHOICES:+$MODEL_CHOICES }$val" ;;
       dashboard.port)         DASHBOARD_PORT="$val" ;;
       dashboard.deploy_url_regex) DEPLOY_URL_REGEX="$val" ;;
+      dashboard.task_template)    TASK_TEMPLATE="$val" ;;
       dashboard.ssh_host)     SSH_HOST="$val" ;;
       ide.backend)            IDE_BACKEND="$val" ;;
       ide.port_base)          IDE_PORT_BASE="$val" ;;
@@ -156,6 +158,8 @@ DASH_ENV="$WT_CONFIG_DIR/dashboard.env"
   env_line PR_REVIEW_OWNER  "$REVIEW_OWNER"
   env_line PR_REVIEW_MODEL  "$WATCHER_MODEL"
   env_line DEPLOY_RE        "$DEPLOY_URL_REGEX"
+  echo "# Instruction the dashboard appends to a bare issue/PR URL (house rules)."
+  env_line TASK_TEMPLATE    "$TASK_TEMPLATE"
   echo "# Attention digest: cheap LLM triage of idle sessions. On-demand by default"
   echo "# (dashboard button); set DIGEST_POLL_MS>0 for a timer. DIGEST=0 disables."
   env_line DIGEST           "1"

@@ -24,6 +24,22 @@ const STATIC = path.join(__dirname, 'public');
 const SSH_HOST = process.env.WT_SSH_HOST || '';
 // Model aliases offered in the "new session" model dropdown (Claude only).
 const MODEL_CHOICES = (process.env.WT_MODEL_CHOICES || '').split(',').map(s => s.trim()).filter(Boolean);
+// Instruction appended to the task when a BARE issue/PR URL is submitted with no
+// prompt of its own (config dashboard.task_template). The factual lines above it —
+// which issue, which repo, which branch — are always generated; this is the part
+// that says how the work should be done, which is a house rule, not a fact. Empty
+// = the built-in default. Placeholders: {repo} {repo_key} {name} {sid} {branch}
+// {kind} {number} {url} {title} {meta_dir}.
+const TASK_TEMPLATE = process.env.TASK_TEMPLATE || '';
+const TASK_DEFAULT = 'Plan, implement, run the relevant tests, keep commits scoped. Ask if scope is unclear.';
+function renderTemplate(tpl, vars) {
+  // The config parser handles single-line scalars only (no block scalars), so a
+  // multi-step house rule has to travel as one line: a literal \n in the value
+  // becomes a real newline here.
+  // Unknown placeholders are left as-is on purpose: a typo stays visible in the
+  // session's own prompt instead of silently becoming an empty string.
+  return tpl.replace(/\\n/g, '\n').replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m));
+}
 // Main-clone path overrides (config clone_paths), mirroring the bash _wt_clonepath.
 let CLONE_PATHS = {};
 try { CLONE_PATHS = JSON.parse(process.env.WT_CLONE_PATHS || '{}'); } catch {}
@@ -358,15 +374,25 @@ async function createSession(body) {
       return { error: `branch ${existingBranch} is already checked out in another session — use that session, or create a separate branch with --from ${existingBranch}` };
     }
   }
-  if (!task && ref) {                                     // bare URL -> auto instruction
+  // A prompt that is nothing BUT the URL carries no instruction of its own, so the
+  // house rule below is what the session must open with. This used to read
+  // `!task && ref`, which is unreachable: `task` starts as the prompt and a bare
+  // URL *is* the prompt — so a pasted URL became the session's entire opening
+  // prompt, with no instruction at all, and task_template never applied.
+  if (ref && (!task || task === ref.url)) {               // bare URL -> auto instruction
     const noun = ref.kind === 'pr' ? `pull request #${ref.number}` : `issue #${ref.number}`;
     const branchLine = existingBranch
       ? `You are on the PR's existing branch (${existingBranch}) in ${repos[key]} — continue that work.`
       : `Work in THIS repo (${repos[key]}); you are on a fresh worktree, branch feat/${name}, from the default branch.`;
+    const instruction = renderTemplate(TASK_TEMPLATE || TASK_DEFAULT, {
+      repo: repos[key], repo_key: key, name, sid: sidOf(key, name),
+      branch: existingBranch || `feat/${name}`, kind: ref.kind, number: ref.number,
+      url: ref.url, title, meta_dir: WT_META,
+    });
     task = [
       `Context: GitHub ${noun} in ${ref.repo} — "${title}". Read it: gh ${ref.kind === 'pr' ? 'pr' : 'issue'} view ${ref.number} --repo ${ref.repo} --comments`,
       branchLine,
-      `Plan, implement, run the relevant tests, keep commits scoped. Ask if scope is unclear.`,
+      instruction,
     ].join('\n');
   }
   const sid = sidOf(key, name);

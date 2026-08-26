@@ -77,6 +77,14 @@ agents:
 
 dashboard:
   port: 7300
+  # Instruction the dashboard appends when you submit a BARE issue/PR URL with
+  # no prompt of your own — your house rules for HOW work gets done. The factual
+  # lines (which issue, which repo, which branch) are always generated; this
+  # replaces only the closing "Plan, implement, run the tests" line, and empty
+  # means exactly that default. One line only (no block scalars in this parser):
+  # a literal \n in the value becomes a newline. Placeholders: {repo}
+  # {repo_key} {name} {sid} {branch} {kind} {number} {url} {title} {meta_dir}.
+  task_template: ''
   # Regex that recognises deploy/preview URLs in PR descriptions/comments; the
   # first match becomes the card's "deploy" link. Empty = feature off.
   # Example (Azure App Service + Static Web Apps preview environments):
