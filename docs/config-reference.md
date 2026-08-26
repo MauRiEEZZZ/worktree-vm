@@ -58,14 +58,24 @@ containing `#` or `:`. A leading `~/` in path values expands to `$HOME`.
 | key | default | meaning |
 |---|---|---|
 | `review_owner` | `""` | GitHub org/user the dashboard's PR-review watcher scopes its `--review-requested=@me` search to. **Empty = watcher off.** |
-| `review_model` | `sonnet` | model for auto-started review sessions; empty = the agent's default. |
 
 ### `agents`
 
 | key | default | meaning |
 |---|---|---|
 | `default` | `claude` | agent `wt-new` launches without `--agent`: `claude` or `codex`. |
-| `model_choices` | `[opus, sonnet, haiku]` | model aliases offered in the dashboard's model dropdown (Claude only; "default" is always offered too). |
+| `default_model` | `""` | **the cost knob**: model for new sessions when no `--model` is given (Claude only; explicit `--model`/the dashboard dropdown always wins). Empty = your ACCOUNT default — conservative and backwards-compatible, but not necessarily cheap: that may be your most expensive model, and every thoughtlessly started session burns at that rate. Set a mid-tier alias to make cheap the default and expensive an explicit choice. |
+| `review_model` | `sonnet` | model for **all** review sessions — manual `wt-review`, the dashboard's review button and the PR-review watcher (one key, one meaning). Reviews are mostly reading plus one report, so mid-tier is plenty; `wt-review --model` overrides per review. Empty = follow `default_model`/the account default. The old `github.review_model` still works but warns at generate time — move it. |
+| `model_choices` | `[opus, sonnet, haiku]` | model aliases offered in the dashboard's model dropdown (Claude only; "account default" is always offered too). |
+
+Changing a session's model later: `wt-model <repo> <name> <model|default>` (or the
+model dropdown on the session's dashboard card). It records the model and
+relaunches the session — the conversation is kept (`claude --continue`); a live
+process cannot switch models without a relaunch, and anything mid-generation at
+that moment is interrupted. The dashboard card always shows the **effective**
+model: the recorded per-session model, or an explicit "account default" when
+none is recorded (that account setting cannot be read from outside — and may be
+your most expensive model).
 
 ### `dashboard`
 
