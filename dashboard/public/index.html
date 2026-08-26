@@ -178,6 +178,10 @@ function card(s){
   const pr = s.pr;
   const prLink = pr ? link(pr.url, `PR #${pr.number}`, pr.title) : `<a class="link off">PR —</a>`;
   const checks = pr && pr.checks!=='none' ? `<span class="pill checks-${pr.checks}">CI ${pr.checks}</span>` : '';
+  // review rounds = the measurable for the cheap-dev-tier hypothesis:
+  // 1-2 rounds -> the savings are real; 3+ -> the dev tier is too tight here.
+  const rounds = pr && pr.reviewRounds
+    ? `<span class="pill${pr.reviewRounds>=3?' checks-failing':''}" title="submitted review rounds on this PR — staying at 1-2 means the cheap dev tier holds; 3+ means it is too tight for this codebase">↻ ${pr.reviewRounds} review${pr.reviewRounds===1?'':'s'}</span>` : '';
   const draft = pr && pr.draft ? `<span class="pill">draft</span>` : '';
   const srcLabel = (s.issue && s.issue.kind==='pr' ? 'source PR' : 'issue') + ' ↗';
   const c = sessionColor(s.id);
@@ -193,7 +197,7 @@ function card(s){
       <span class="pill agent-${esc(s.agent||'claude')}" title="AI agent of this session">${esc(s.agent||'claude')}</span>
       ${modelCtl(s)}
       <span class="pill">${esc(s.branch)}</span>
-      ${draft}${checks}
+      ${draft}${checks}${rounds}
       <span class="links">
         ${prLink}
         ${link(s.deploy, 'deploy ↗', s.deploy||'no deploy URL yet')}

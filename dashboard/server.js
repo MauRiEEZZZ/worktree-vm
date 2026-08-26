@@ -34,7 +34,11 @@ const PR_REVIEW_WATCH = process.env.PR_REVIEW_WATCH !== '0';          // on by d
 const PR_REVIEW_DRYRUN = process.env.PR_REVIEW_DRYRUN === '1';        // log what it would create, don't spawn
 const PR_REVIEW_POLL_MS = Number(process.env.PR_REVIEW_POLL_MS) || 300000;  // own background cadence (default 5 min)
 const PR_REVIEW_OWNER = process.env.PR_REVIEW_OWNER || '';            // org/user to scope the search to; empty = watcher off
-const PR_REVIEW_MODEL = process.env.PR_REVIEW_MODEL || '';            // model for auto-review sessions (agents.review_model); '' = account default
+// Model for WATCHER review sessions — its OWN key (github.review_model), not
+// agents.review_model: the watcher reviews someone else's PR, the owner reads
+// the report and decides, so a missed nuance costs no lead time (unlike the
+// pre-PR self-review gate). '' = account default.
+const PR_REVIEW_MODEL = process.env.PR_REVIEW_MODEL || '';
 const REVIEW_SEEN = path.join(WT_META, 'review-seen.json');          // ledger (NOT in META_DIR, which is scanned as sessions): <owner/repo>#<n> already handled
 // Attention-digest: a cheap LLM pass over idle sessions -> ranked "who needs you, why, next".
 const DIGEST = process.env.DIGEST !== '0';                           // feature on by default (on-demand)
@@ -215,7 +219,7 @@ async function paneOf(sid) {   // raw pane (last ~40 lines, unfiltered) for work
 }
 async function prFor(repoFull, branch) {
   const { out, err } = await gh(['pr', 'list', '--repo', repoFull, '--head', branch, '--state', 'all',
-    '--json', 'number,url,title,state,isDraft,statusCheckRollup,reviewDecision', '--limit', '1']);
+    '--json', 'number,url,title,state,isDraft,statusCheckRollup,reviewDecision,reviews', '--limit', '1']);
   if (err) return null;
   let arr; try { arr = JSON.parse(out); } catch { return null; }
   const pr = arr && arr[0]; if (!pr) return null;
@@ -226,8 +230,12 @@ async function prFor(repoFull, branch) {
     else if (states.some(s => /PENDING|IN_PROGRESS|EXPECTED|QUEUED/i.test(s))) checks = 'pending';
     else checks = 'passing';
   }
+  // reviewRounds: submitted reviews on the PR — the measurable for the cheap
+  // dev tier hypothesis. Staying at 1-2 rounds means the savings are real;
+  // 3+ means the dev tier is too tight for this codebase and should go back
+  // up. One field from data we fetch anyway; no separate stats machinery.
   return { number: pr.number, url: pr.url, title: pr.title, state: pr.state, draft: pr.isDraft, checks,
-    reviewDecision: pr.reviewDecision || '' };
+    reviewDecision: pr.reviewDecision || '', reviewRounds: (pr.reviews || []).length };
 }
 // DERIVED state, deliberately not a marker: a session is "waiting on review"
 // when its OPEN, non-draft PR has reviewDecision REVIEW_REQUIRED — the ball is
@@ -466,8 +474,8 @@ async function pollReviewRequests() {
       const name = `review-${pr.number}`;
       if (fs.existsSync(path.join(WT_TREES, key, name))) { seen[ledgerKey] = { sid: sidOf(key, name), at: Date.now() }; writeSeen(seen); continue; }
       if (PR_REVIEW_DRYRUN) { console.log(`[pr-review] DRYRUN would start ${sidOf(key, name)} for ${ledgerKey} — "${pr.title}"`); continue; }
-      // model: the shared review key; 'default' = explicitly the account default,
-      // so an empty key never lets a review inherit the cheap dev default_model.
+      // model: the watcher's own key; 'default' = explicitly the account default,
+      // so an empty key never lets a watcher review inherit the dev default_model.
       const r = await createSession({ repo: key, agent: 'claude', name, auto: true, denyPost: true, model: PR_REVIEW_MODEL || 'default', prompt: reviewPrompt(pr, repos[key]) });
       if (r && !r.error) { seen[ledgerKey] = { sid: r.id, at: Date.now() }; writeSeen(seen); console.log(`[pr-review] started ${r.id} for ${ledgerKey}`); }
       else { seen[ledgerKey] = { error: r && r.error, at: Date.now() }; writeSeen(seen); console.error(`[pr-review] create failed for ${ledgerKey}:`, r && r.error); }
