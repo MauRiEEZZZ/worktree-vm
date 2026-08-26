@@ -93,6 +93,22 @@ economics, so they typically carry three different values.
 
 None of the keys is hardwired to a model; empty always falls back to the
 account default. Adjust a live session any time with `--model` / `wt-model`.
+
+**`claude --continue` keeps the conversation's original model.** This is not
+in the docs and everyone building on it makes the same wrong assumption, so it
+is pinned here with the measurement: on a live VM the account default was
+changed to a cheaper model, the explicit per-session markers were removed, and
+the sessions restarted — minutes later a resumed session's next turn still ran
+on the old expensive model (verified in the conversation history's own
+per-turn model records, not in the UI: marker and card said one thing, the
+turns said another). Only an explicit `--model` on the resume switched it.
+Consequence, already implemented: `wt-resume` (which `wt-restore`, the
+dashboard's resume route and `wt-model` all funnel through) passes the
+effective model explicitly — the per-session marker wins, `default_model`
+fills in where no marker exists (and is then recorded so the card matches
+reality). Only when both are empty is no flag passed, and a resumed
+conversation then keeps its own historical model — changing your *account*
+default does not retro-apply to resumed conversations.
 | `model_choices` | `[opus, sonnet, haiku]` | model aliases offered in the dashboard's model dropdown (Claude only; "account default" is always offered too). |
 
 Changing a session's model later: `wt-model <repo> <name> <model|default>` (or the

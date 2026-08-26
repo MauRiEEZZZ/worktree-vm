@@ -117,10 +117,25 @@ wt-resume() {
   model="$(_wt_model_get "$sid")"   # and the same model override (if any)
   [[ "$flags" == *auto* ]] && auto=1; [[ "$flags" == *denypost* ]] && denypost=1
   [ -d "$dir" ] || { echo "no worktree: $dir (use wt-new to create one)"; return 1; }
+  # `claude --continue` KEEPS the model of the ORIGINAL conversation — the
+  # settings.json default is NOT applied on resume (measured on a live VM:
+  # default changed to a cheaper model, markers removed, session restarted —
+  # the next turn still ran the old expensive model; only an explicit --model
+  # switched it). So resume is the SECOND decision point and must pass the
+  # effective model explicitly: the per-session marker wins; where there is no
+  # marker, agents.default_model fills in and is RECORDED, so the dashboard
+  # shows what actually runs (marker and UI otherwise disagree with reality).
+  # Both empty = no flag: --continue then keeps the conversation's own model.
+  # wt-restore, the dashboard's resume route and wt-model all funnel through
+  # here, so this covers every resume path.
+  if [ -z "$model" ] && [ "$agent" = claude ] && [ -n "$WT_DEFAULT_MODEL" ]; then
+    model="$WT_DEFAULT_MODEL"
+    _wt_model_set "$sid" "$model"
+  fi
   if tmux has-session -t "=$sid" 2>/dev/null; then
     echo "session already running: $sid"
   elif [ -n "${WT_NO_LAUNCH:-}" ]; then
-    echo "would resume: $label ($agent) in $dir [no-launch]"; return 0
+    echo "would resume: $label ($agent${model:+, model $model}) in $dir [no-launch]"; return 0
   else
     [ "$agent" = claude ] && _wt_seed_perms "$dir" "$auto" "$denypost"  # idempotent: re-assert trust + settings.local before relaunch
     _wt_hook agent-launch "$sid" "$dir" "$agent" resume
