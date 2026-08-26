@@ -30,6 +30,13 @@ wt-new() {
   done
   case "$agent" in claude|codex) ;; *) echo "unknown agent: $agent (choose claude or codex)"; return 1;; esac
   command -v "$agent" >/dev/null 2>&1 || { echo "agent '$agent' is not installed on this machine"; return 1; }
+  # COST KNOB: without an explicit --model, fall back to the configured
+  # agents.default_model (claude only — the aliases are Claude's). An explicit
+  # --model always wins; empty config = the account default, exactly as before.
+  # This is the single decision point: the dashboard's create flow spawns wt-new,
+  # so it inherits the same rule. The effective model lands in the session
+  # marker, so wt-resume, wt-ls and the dashboard all show/keep what really runs.
+  [ -z "$model" ] && [ "$agent" = claude ] && model="$WT_DEFAULT_MODEL"
   local repo; repo="$(_wt_ensure "$key")" || return 1
   local base; base="$(_wt_base "$repo")"
   local dir="$WT_TREES/$key/$name" branch="feat/$name" sid; sid="$(_wt_sid "$key" "$name")"
@@ -162,16 +169,23 @@ wt-restore() {
 #   = + uncommitted tracked changes; all = + untracked files.
 wt-review() {
   case "${1:-}" in -h|--help) _wt_help wt-review; return 0;; esac
-  local key="" name="" scope=working agent="$WT_AGENT_DEFAULT"
+  local key="" name="" scope=working agent="$WT_AGENT_DEFAULT" model=""
   local pos=()
   while [ $# -gt 0 ]; do
     case "$1" in
       --scope) scope="${2:-}"; shift 2;;
       --agent) agent="${2:-}"; shift 2;;
+      --model) model="${2:-}"; shift 2;;
       --*) echo "unknown option: $1 (see: wt-review --help)"; return 1;;
       *) pos+=("$1"); shift;;
     esac
   done
+  # A review is mostly reading plus one report — a mid-tier model is plenty. ONE
+  # key (agents.review_model) governs ALL review sessions: this command covers
+  # both manual use and the dashboard's review button (which spawns wt-review);
+  # the PR-review watcher reads the same key via PR_REVIEW_MODEL. An explicit
+  # --model wins; claude only (the aliases are Claude's).
+  [ -z "$model" ] && [ "$agent" = claude ] && model="$WT_REVIEW_MODEL"
   if [ "${#pos[@]}" -ge 2 ]; then
     key="${pos[0]}"; name="${pos[1]}"
   elif [ "${#pos[@]}" -eq 0 ]; then
@@ -203,8 +217,40 @@ wt-review() {
   esac
   local task="You are an INDEPENDENT reviewer. Review the work-in-progress of dev session wt/$key/$name. The live dev worktree is at $devdir; the base is commit $base (merge-base with origin/$defbr), dev HEAD is $devhead. Scope=$scope. Inspect the changes read-only with: $diffcmd .$extra Read surrounding code (in this review worktree or via $devdir) for context where needed, but CHANGE nothing in $devdir. ALSO get an independent second opinion from Codex via the codex MCP server (the mcp__codex__* tools) on the same diff/scope; if the MCP tool fails, fall back to 'codex exec'. Consolidate both opinions into concrete findings (correctness/bugs, security, tests, edge cases, style) with file:line where possible, plus a short overall conclusion. REPORT ONLY: post NOTHING to GitHub and change no code -- this is pre-PR work-in-progress; report your findings here (the user reads along via Remote Control)."
   local b64; b64="$(printf '%s' "$task" | base64 | tr -d '\n')"
-  echo "review session for wt/$key/$name (scope $scope, base ${base:0:12}) -> wt/$key/$rname"
-  wt-new "$key" "$rname" --agent "$agent" --auto --deny-post --from "$devhead" --task-b64 "$b64"
+  echo "review session for wt/$key/$name (scope $scope, base ${base:0:12}${model:+, model $model}) -> wt/$key/$rname"
+  if [ -n "$model" ]; then
+    wt-new "$key" "$rname" --agent "$agent" --model "$model" --auto --deny-post --from "$devhead" --task-b64 "$b64"
+  else
+    wt-new "$key" "$rname" --agent "$agent" --auto --deny-post --from "$devhead" --task-b64 "$b64"
+  fi
+}
+
+# wt-model <repo> <name> <model|default> : change a session's model and relaunch
+#   it so the change takes effect. Relaunching KEEPS the conversation (claude
+#   --continue on the same worktree path); what is NOT possible is changing the
+#   model of a live process without a relaunch — anything mid-generation at that
+#   moment is interrupted. On a stopped session it just records the model for
+#   the next resume. 'default' clears the override (back to agents.default_model
+#   / the account default at next launch).
+wt-model() {
+  case "${1:-}" in -h|--help) _wt_help wt-model; return 0;; esac
+  if [ $# -lt 3 ]; then echo "usage: wt-model <repo> <name> <model|default>"; return 1; fi
+  local key="$1" name="$2" model="$3" sid; sid="$(_wt_sid "$key" "$name")"
+  [ -d "$WT_TREES/$key/$name" ] || { echo "no worktree: $WT_TREES/$key/$name (see: wt-ls)"; return 1; }
+  case "$model" in
+    default) model="" ;;
+    *[!a-zA-Z0-9._-]*|"") echo "invalid model alias: '$model'"; return 1 ;;
+  esac
+  _wt_model_set "$sid" "$model"
+  echo "model for $sid set to ${model:-default (no override)}"
+  if tmux has-session -t "=$sid" 2>/dev/null; then
+    if [ -n "${WT_NO_LAUNCH:-}" ]; then echo "would relaunch with the new model [no-launch]"; return 0; fi
+    echo "relaunching so it takes effect — the conversation is kept (claude --continue); anything mid-generation is interrupted"
+    tmux kill-session -t "=$sid" 2>/dev/null || true
+    wt-resume "$key" "$name"
+  else
+    echo "session is not running — the model applies on the next wt-resume"
+  fi
 }
 
 # wt-rm <repo> <name> [-f] : kill the tmux session, remove the worktree + branch.

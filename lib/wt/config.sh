@@ -15,6 +15,8 @@ declare -gA WT_REPOS 2>/dev/null || true
 declare -gA WT_PATHS 2>/dev/null || true
 : "${WT_DEFAULT_BASE_BRANCH:=main}"
 : "${WT_AGENT_DEFAULT:=claude}"
+: "${WT_DEFAULT_MODEL:=}"        # model for new sessions; empty = account default
+: "${WT_REVIEW_MODEL:=sonnet}"   # model for ALL review sessions (one key, one meaning)
 : "${WT_IDE_BACKEND:=none}"
 : "${WT_IDE_PORT_BASE:=6000}"
 : "${WT_SESSIONS_DIR:=$HOME/.wt-sessions}"

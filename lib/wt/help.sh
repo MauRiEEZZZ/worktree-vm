@@ -21,8 +21,9 @@ wt-new <repo> <name> [--agent claude|codex] [--auto] [--deny-post] [--model <ali
   nothing goes to GitHub without your approval, but you CAN approve it. The choice
   is remembered, so wt-resume relaunches with the same flags.
   --model <alias> overrides the model (aliases come from agents.model_choices in
-  your config) — handy to run unattended/background sessions on a cheaper model;
-  empty = your own default.
+  your config). Without --model, the configured agents.default_model applies
+  (claude only); if that is empty too, the session runs on your ACCOUNT default —
+  which may be your most expensive model. Change it later with wt-model.
   The optional task = opening prompt. --task-b64 <b64> = quoting-safe task.
   --branch <existing> checks out an existing branch (e.g. the branch of a PR you
   want to continue) instead of creating a new feat/<name>.
@@ -45,8 +46,19 @@ wt-restore <repo> <name> [--branch <b>] [--agent claude|codex] [--model <m>] [--
   "Restore" panel on the dashboard.
 H
 ;;
+    wt-model) cat <<'H'
+wt-model <repo> <name> <model|default>
+  Change a session's model and relaunch it so the change takes effect. The
+  relaunch KEEPS the conversation (claude --continue on the same worktree);
+  what is NOT possible is switching the model of a live process without a
+  relaunch — anything mid-generation at that moment is interrupted. On a
+  stopped session it only records the model for the next wt-resume. 'default'
+  clears the override. Typical use: the configured default is a cheap model
+  and one session turns out to need more.
+H
+;;
     wt-review) cat <<'H'
-wt-review [<repo> <name>] [--scope committed|working|all] [--agent claude|codex]
+wt-review [<repo> <name>] [--scope committed|working|all] [--agent claude|codex] [--model <alias>]
   Start a separate, independent review session on the work-in-progress of dev
   session wt/<repo>/<name>. Omit <repo> <name> and they are derived from the
   current worktree — so a dev session can review itself with just `wt-review`.
@@ -56,6 +68,8 @@ wt-review [<repo> <name>] [--scope committed|working|all] [--agent claude|codex]
   to GitHub (--auto --deny-post). Read the findings via Remote Control.
   scope: committed = committed diff only; working (default) = + uncommitted
   tracked changes; all = + untracked files. Clean up with wt-rm <repo> <name>-review.
+  The review runs on agents.review_model (default sonnet) — reviews are mostly
+  reading plus one report; --model overrides for the odd heavyweight one.
 H
 ;;
     wt-ide) cat <<'H'
@@ -119,6 +133,7 @@ wt — parallel AI dev sessions (Claude Code / OpenAI Codex) on git worktrees
   wt-ide <repo> <name>           start the configured IDE backend on a worktree
   wt-ide-stop [<repo> <name>]    stop the (only) running IDE backend
   wt-ls                          show all sessions
+  wt-model <repo> <name> <m>     change a session's model (+relaunch, keeps the conversation)
   wt-env <repo> [name]           local config (.env*, appsettings.*.json) from main clone to worktree(s)
   wt-seed-main [<key>]           seed the main clone with local config from the secrets source
   wt-rm <repo> <name> [-f]       remove worktree + branch

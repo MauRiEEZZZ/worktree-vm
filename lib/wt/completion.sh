@@ -15,14 +15,17 @@ _wt_complete() {
   if [ "$COMP_CWORD" -eq 2 ]; then
     repo="${COMP_WORDS[1]}"
     case "$cmd" in
-      wt-rm|wt-env|wt-resume|wt-ide|wt-ide-stop)
+      wt-rm|wt-env|wt-resume|wt-ide|wt-ide-stop|wt-model)
         [ -d "$WT_TREES/$repo" ] && names=$(cd "$WT_TREES/$repo" && ls -1 2>/dev/null)
         COMPREPLY=( $(compgen -W "$names" -- "$cur") ) ;;
     esac
     return
   fi
+  if [ "$COMP_CWORD" -eq 3 ] && [ "$cmd" = "wt-model" ]; then
+    COMPREPLY=( $(compgen -W "default ${WT_MODEL_CHOICES:-}" -- "$cur") ); return
+  fi
   if [ "$COMP_CWORD" -eq 3 ] && [ "$cmd" = "wt-rm" ]; then
     COMPREPLY=( $(compgen -W "-f" -- "$cur") )
   fi
 }
-complete -F _wt_complete wt-new wt-rm wt-env wt-resume wt-restore wt-review wt-ide wt-ide-stop wt-seed-main
+complete -F _wt_complete wt-new wt-rm wt-env wt-resume wt-restore wt-review wt-ide wt-ide-stop wt-seed-main wt-model
