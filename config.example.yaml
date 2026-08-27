@@ -37,6 +37,9 @@ github:
   # report and decide yourself, so a missed nuance costs you no lead time.
   # Mid-tier is the sensible spend here. Empty = your account default.
   review_model: ""
+  # Handle wt-pr-draft asks for a review from once the draft PR is open. GitHub's
+  # to change, so it is configurable; empty skips the request entirely.
+  copilot_reviewer: 'copilot-pull-request-reviewer[bot]'
 
 agents:
   # Agent that wt-new launches when --agent is not given: claude | codex.

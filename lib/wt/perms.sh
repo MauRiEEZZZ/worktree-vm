@@ -26,7 +26,13 @@ _wt_seed_perms() {  # $1=dir $2=auto(0/1) $3=denypost(0/1)  -- claude only
   # mcp__codex(__*) lets the Codex second-opinion run without a prompt.
   local allow="" ask=""
   [ "$auto" = 1 ] && allow='"Bash","Read","Edit","Write","Glob","Grep","WebFetch","mcp__codex","mcp__codex__*"'
-  [ "$denypost" = 1 ] && ask='"Bash(gh pr review:*)","Bash(gh pr comment:*)","Bash(gh pr merge:*)"'
+  # The outward helpers belong to whoever is talking to the user: a session running
+  # them would push or open a PR on a RELAYED "yes", which is not the user's own.
+  # ask, not deny, so a session someone is actually driving can still do it after an
+  # explicit confirmation — and note --auto's broad "Bash" allow makes this rule the
+  # only thing standing between an unattended session and origin.
+  ask='"Bash(wt-push:*)","Bash(wt-pr-draft:*)"'
+  [ "$denypost" = 1 ] && ask="$ask"',"Bash(gh pr review:*)","Bash(gh pr comment:*)","Bash(gh pr merge:*)"'
   printf '{"permissions":{"allow":[%s],"ask":[%s]}}\n' "$allow" "$ask" > "$dir/.claude/settings.local.json"
   local ex; ex="$(git -C "$dir" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)/info/exclude"
   [ -f "$ex" ] && ! grep -qxF '.claude/settings.local.json' "$ex" 2>/dev/null && echo '.claude/settings.local.json' >> "$ex"

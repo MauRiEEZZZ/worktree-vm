@@ -37,6 +37,31 @@ wt-resume <repo> <name>
   codex resume --last). If the session still runs, you're simply attached.
 H
 ;;
+    wt-push) cat <<'H'
+wt-push [<repo> <name>]
+  Push that session's OWN branch to origin. Inside a worktree the repo and name
+  are derived from the path, so a plain `wt-push` works. Refuses: a detached HEAD,
+  the repo's default branch and release/hotfix/main/master/develop, and a worktree
+  with uncommitted TRACKED changes (what is on the PR must be what the session
+  actually has). Never force-pushes; there is no flag for it.
+  This is an OUTWARD action and belongs to whoever is talking to the user — a
+  session pushing on a relayed "yes" is not the user's approval. wt-new therefore
+  seeds an ASK rule for this command into every session it launches.
+H
+;;
+    wt-pr-draft) cat <<'H'
+wt-pr-draft [<repo> <name>] [--title <t>] [--body-file <f>]
+  Open the session's pull request as a DRAFT and request the Copilot review.
+  Draft only, by design: taking a PR out of draft spends a person's day and stays
+  a separate, deliberate act (gh pr ready). Refuses when the branch is missing on
+  origin or origin is not at your HEAD (run wt-push first — a PR built on a stale
+  remote branch shows a diff nobody reviewed), and when a PR is already open for
+  the branch. Without --title/--body-file it falls back to gh's --fill.
+  The Copilot request is best-effort: the PR exists either way, so a failed
+  request reports itself instead of failing the command. The reviewer handle is
+  github.copilot_reviewer in your config — GitHub's to change, not ours to bake in.
+H
+;;
     wt-restore) cat <<'H'
 wt-restore <repo> <name> [--branch <b>] [--agent claude|codex] [--model <m>] [--auto] [--deny-post]
   Restore a DELETED session. wt-rm removes the worktree/branch/tmux/metadata, but

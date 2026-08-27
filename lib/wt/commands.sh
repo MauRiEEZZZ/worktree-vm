@@ -248,6 +248,122 @@ wt-review() {
   fi
 }
 
+# --- outward actions (the ORCHESTRATOR's, not a session's) -------------------
+# A dev session must not push its own work or open its own PR: it would be acting
+# on a relayed "yes" instead of the user's. These two helpers exist so the person
+# (or orchestrating session) doing it has a NAMED, narrow command to run instead
+# of arbitrary remote shell — easier to authorise once, and impossible to widen by
+# accident. wt-new seeds an ASK rule for both into every session it launches.
+
+# _wt_resolve <cmd> <pos...> : shared "<repo> <name> or derive from cwd" resolution.
+# Echoes "<key> <name>"; non-zero (with a message) when neither works.
+_wt_resolve() {
+  local cmd="$1"; shift
+  if [ "$#" -ge 2 ]; then echo "$1 $2"; return 0; fi
+  if [ "$#" -eq 0 ]; then
+    local rel="${PWD#$WT_TREES/}"
+    if [ "$rel" = "$PWD" ] || [ "$rel" = "${rel%%/*}" ]; then
+      echo "no <repo> <name> given and not inside a worktree (~/wt/<repo>/<name>)" >&2; return 1
+    fi
+    local key="${rel%%/*}"; rel="${rel#*/}"; echo "$key ${rel%%/*}"; return 0
+  fi
+  echo "usage: $cmd [<repo> <name>]" >&2; return 1
+}
+
+# _wt_pushable <dir> : echo the branch checked out at <dir> if it may be pushed;
+# non-zero with a reason otherwise. Refuses a detached HEAD, the repo's default
+# branch and the usual shared branches — those are never a session's own work.
+_wt_pushable() {
+  local dir="$1" br defbr
+  br="$(git -C "$dir" symbolic-ref --quiet --short HEAD 2>/dev/null)" || {
+    echo "detached HEAD in $dir — nothing that can be pushed as a branch" >&2; return 1; }
+  defbr="$(_wt_base "$dir")"
+  case "$br" in
+    "$defbr"|main|master|develop|release/*|hotfix/*)
+      echo "refusing to push '$br': shared branch, not a session's own work" >&2; return 1;;
+  esac
+  echo "$br"
+}
+
+# wt-push [<repo> <name>] : push that session's OWN branch to origin (never a
+#   shared branch, never a force-push, never with uncommitted tracked changes —
+#   what is on the PR must be what the session actually has).
+wt-push() {
+  case "${1:-}" in -h|--help) _wt_help wt-push; return 0;; esac
+  local rk; rk="$(_wt_resolve wt-push "$@")" || return 1
+  local key="${rk%% *}" name="${rk##* }"
+  local dir="$WT_TREES/$key/$name"
+  { [ -d "$dir/.git" ] || [ -f "$dir/.git" ]; } || { echo "no worktree: $dir (see: wt-ls)"; return 1; }
+  local br; br="$(_wt_pushable "$dir")" || return 1
+  if [ -n "$(git -C "$dir" status --porcelain --untracked-files=no)" ]; then
+    echo "uncommitted tracked changes in $dir — commit them first, or the PR will not"
+    echo "show what this session actually has:"
+    git -C "$dir" status --short --untracked-files=no | sed 's/^/  /'
+    return 1
+  fi
+  if [ -n "$(git -C "$dir" ls-files --others --exclude-standard | head -1)" ]; then
+    echo "note: untracked files stay behind (not pushed):"
+    git -C "$dir" ls-files --others --exclude-standard | head -5 | sed 's/^/  /'
+  fi
+  echo "pushing $key/$name: $br -> origin"
+  git -C "$dir" push --set-upstream origin "$br"
+}
+
+# wt-pr-draft [<repo> <name>] [--title <t>] [--body-file <f>] : open the session's
+#   PR as a DRAFT and request the Copilot review. Draft only — taking a PR out of
+#   draft spends a person's time and stays a separate, deliberate act.
+wt-pr-draft() {
+  case "${1:-}" in -h|--help) _wt_help wt-pr-draft; return 0;; esac
+  local title="" bodyfile="" pos=()
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --title)     title="${2:-}"; shift 2;;
+      --body-file) bodyfile="${2:-}"; shift 2;;
+      --*) echo "unknown option: $1 (see: wt-pr-draft --help)"; return 1;;
+      *) pos+=("$1"); shift;;
+    esac
+  done
+  local rk; rk="$(_wt_resolve wt-pr-draft ${pos[@]+"${pos[@]}"})" || return 1
+  local key="${rk%% *}" name="${rk##* }"
+  local dir="$WT_TREES/$key/$name" repo="${WT_REPOS[$key]:-}"
+  [ -n "$repo" ] || { echo "unknown repo key: $key (see: wt-repos)"; return 1; }
+  { [ -d "$dir/.git" ] || [ -f "$dir/.git" ]; } || { echo "no worktree: $dir (see: wt-ls)"; return 1; }
+  local br; br="$(_wt_pushable "$dir")" || return 1
+  # The branch must be on the remote AND match it: a PR opened from a stale remote
+  # branch shows a diff nobody reviewed.
+  local remote_sha local_sha
+  remote_sha="$(git -C "$dir" ls-remote --exit-code origin "refs/heads/$br" 2>/dev/null | cut -f1)" \
+    || { echo "branch '$br' is not on origin yet — run: wt-push $key $name"; return 1; }
+  local_sha="$(git -C "$dir" rev-parse HEAD)"
+  [ "$remote_sha" = "$local_sha" ] || { echo "origin/$br is not at your HEAD (${local_sha:0:12} vs ${remote_sha:0:12}) — run: wt-push $key $name"; return 1; }
+  local existing; existing="$(gh pr list --repo "$repo" --head "$br" --state open --json number -q '.[0].number' 2>/dev/null)"
+  [ -n "$existing" ] && { echo "PR #$existing already open for $br — this command only OPENS a draft: $(gh pr view "$existing" --repo "$repo" --json url -q .url 2>/dev/null)"; return 1; }
+  [ -n "$bodyfile" ] && [ ! -f "$bodyfile" ] && { echo "no such body file: $bodyfile"; return 1; }
+  local defbr; defbr="$(_wt_base "$dir")"
+  local args=(pr create --repo "$repo" --draft --base "$defbr" --head "$br")
+  [ -n "$title" ] && args+=(--title "$title")
+  [ -n "$bodyfile" ] && args+=(--body-file "$bodyfile")
+  { [ -z "$title" ] || [ -z "$bodyfile" ]; } && args+=(--fill)
+  echo "opening DRAFT pr: $repo  $br -> $defbr"
+  gh "${args[@]}" || return 1
+  local num; num="$(gh pr list --repo "$repo" --head "$br" --state open --json number -q '.[0].number' 2>/dev/null)"
+  [ -n "$num" ] || { echo "draft opened, but could not read its number back — request the Copilot review yourself"; return 0; }
+  # Copilot's review is requested best-effort: the PR already exists, so a failure
+  # here must not look like the whole command failed (re-running would refuse, and
+  # rightly so). The reviewer handle is configurable because it is GitHub's to change.
+  local rev="${WT_COPILOT_REVIEWER:-copilot-pull-request-reviewer[bot]}"
+  if [ -n "$rev" ]; then
+    if gh pr edit "$num" --repo "$repo" --add-reviewer "$rev" >/dev/null 2>&1 \
+    || gh api "repos/$repo/pulls/$num/requested_reviewers" -X POST -f "reviewers[]=$rev" >/dev/null 2>&1; then
+      echo "requested review from $rev"
+    else
+      echo "could not request '$rev' automatically — ask for the Copilot review in the PR UI,"
+      echo "or set github.copilot_reviewer in your config if the handle changed."
+    fi
+  fi
+  gh pr view "$num" --repo "$repo" --json url -q .url
+}
+
 # wt-model <repo> <name> <model|default> : change a session's model and relaunch
 #   it so the change takes effect. Relaunching KEEPS the conversation (claude
 #   --continue on the same worktree path); what is NOT possible is changing the

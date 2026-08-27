@@ -15,7 +15,7 @@ _wt_complete() {
   if [ "$COMP_CWORD" -eq 2 ]; then
     repo="${COMP_WORDS[1]}"
     case "$cmd" in
-      wt-rm|wt-env|wt-resume|wt-ide|wt-ide-stop|wt-model)
+      wt-rm|wt-env|wt-resume|wt-ide|wt-ide-stop|wt-model|wt-push|wt-pr-draft)
         [ -d "$WT_TREES/$repo" ] && names=$(cd "$WT_TREES/$repo" && ls -1 2>/dev/null)
         COMPREPLY=( $(compgen -W "$names" -- "$cur") ) ;;
     esac

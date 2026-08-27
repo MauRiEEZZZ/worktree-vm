@@ -59,6 +59,7 @@ containing `#` or `:`. A leading `~/` in path values expands to `$HOME`.
 |---|---|---|
 | `review_owner` | `""` | GitHub org/user the dashboard's PR-review watcher scopes its `--review-requested=@me` search to. **Empty = watcher off.** |
 | `review_model` | `""` | model for **watcher** review sessions (auto-started for PRs where your review is requested). Empty = account default. |
+| `copilot_reviewer` | `copilot-pull-request-reviewer[bot]` | handle `wt-pr-draft` requests a review from once the draft is open. Configurable because the handle is GitHub's to change; empty skips the request. A failed request is reported, not fatal — the PR already exists. |
 
 ### `agents`
 
