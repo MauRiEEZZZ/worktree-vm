@@ -246,12 +246,18 @@ async function prFor(repoFull, branch) {
     else if (states.some(s => /PENDING|IN_PROGRESS|EXPECTED|QUEUED/i.test(s))) checks = 'pending';
     else checks = 'passing';
   }
-  // reviewRounds: submitted reviews on the PR — the measurable for the cheap
-  // dev tier hypothesis. Staying at 1-2 rounds means the savings are real;
-  // 3+ means the dev tier is too tight for this codebase and should go back
-  // up. One field from data we fetch anyway; no separate stats machinery.
+  // reviewRounds: DECIDED reviews on the PR — the measurable for the cheap dev
+  // tier hypothesis. Staying at 1-2 rounds means the savings are real; 3+ means
+  // the dev tier is too tight for this codebase and should go back up.
+  // COMMENTED events are deliberately excluded: they are not rounds. Counting
+  // every event (which this did until 2026-08-27) reports comment VOLUME, so a
+  // thorough reviewer leaving twelve inline notes in one pass read as twelve
+  // rounds — 35 on one real PR that had three. The metric exists to answer a
+  // model-tier question worth real money, and it was answering it wrong, in the
+  // direction of "the cheap tier is failing".
+  const rounds = (pr.reviews || []).filter(r => /^(APPROVED|CHANGES_REQUESTED|DISMISSED)$/.test(r.state || ''));
   return { number: pr.number, url: pr.url, title: pr.title, state: pr.state, draft: pr.isDraft, checks,
-    reviewDecision: pr.reviewDecision || '', reviewRounds: (pr.reviews || []).length };
+    reviewDecision: pr.reviewDecision || '', reviewRounds: rounds.length };
 }
 // DERIVED state, deliberately not a marker: a session is "waiting on review"
 // when its OPEN, non-draft PR has reviewDecision REVIEW_REQUIRED — the ball is
