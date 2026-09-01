@@ -19,6 +19,14 @@
 #    without a VM restart. Provisioning-level changes (stacks) additionally
 #    need install.sh in the guest; platform facts (cpus/memory/ports/disks)
 #    always need `limactl delete` + up.sh (work survives on the data disk).
+#  - --sync-config is ALSO the only way to apply a host config edit at all: the
+#    guest keeps its own ~/.config/wt/config.yaml on the persistent data disk, so
+#    a rebuild re-attaches the OLD guest config and silently ignores every host
+#    change made since. (Measured 2026-09-01: a rebuild left dashboard.task_template
+#    empty for hours because only the host file had it.)
+#  - it restarts the dashboard, which SPAWNS the tmux server that runs the
+#    sessions. The unit therefore sets KillMode=process; without it a restart
+#    kills every running session (that is how five were lost on 2026-09-01).
 set -eu
 
 LIMA_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -115,6 +123,8 @@ if [ "$SYNC_CONFIG" = 1 ]; then
   limactl shell "$INSTANCE" -- bash -c 'bash "$HOME/worktree-vm/lib/config/generate-env.sh" && sudo systemctl restart wt-dashboard'
   echo
   echo "done — config-driven features (repos, clone_paths, dashboard settings) are live."
+  echo "note: the dashboard was restarted. Sessions survive that (unit sets KillMode=process);"
+  echo "      if any session is missing, check that the unit has it: systemctl show wt-dashboard -p KillMode"
   echo "Provisioning-level changes (stacks:, agents) additionally need one idempotent run in the guest (no restart):"
   echo "  limactl shell $INSTANCE -- bash worktree-vm/install.sh"
   echo "Platform facts (cpus/memory/ports/disks) still require: limactl delete $INSTANCE, then up.sh (work survives on the data disk)."

@@ -16,6 +16,18 @@ EnvironmentFile=@CONFIG_DIR@/dashboard.env
 ExecStart=@NODE@ @DASHBOARD_DIR@/server.js
 Restart=on-failure
 RestartSec=3
+# The dashboard SPAWNS the work it manages: starting a session runs `tmux
+# new-session` from this process. Node's spawn(detached:true) gives that child a
+# new process group but does NOT move it out of this unit's cgroup, so the tmux
+# SERVER — and with it every session on it, including ones started later from an
+# ssh shell, because they all attach to that one server — lives in here. With the
+# default KillMode=control-group, `systemctl restart wt-dashboard` therefore kills
+# every running session. Measured 2026-09-01: one `up.sh --sync-config` (which
+# restarts this unit) destroyed five sessions, 320 tasks and 2.0 GB of work in the
+# cgroup. KillMode=process stops only the node process and leaves the sessions
+# running; they are meant to outlive the dashboard, which is exactly why they are
+# detached in the first place.
+KillMode=process
 
 [Install]
 WantedBy=multi-user.target
