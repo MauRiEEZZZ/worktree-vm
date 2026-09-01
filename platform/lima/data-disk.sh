@@ -20,6 +20,9 @@
 #   ~/.claude ~/.codex ~/.config/gh ~/.azure   agent + CLI auth/state
 #   ~/.config/wt           the wt config + derived env
 #   ~/.wt-meta             per-session markers (agent/flags/model/priority)
+#   ~/.cache/node          corepack's package-manager downloads (pnpm/yarn per repo
+#                          pin) — without it every rebuild re-downloads them on first
+#                          use, and a session with no network has no pnpm at all
 #                          AND the PR-review watcher's review-seen.json ledger —
 #                          lose that and the watcher re-spawns a review session
 #                          for every PR it had already handled
@@ -44,7 +47,7 @@ D="${WT_DATA_MOUNT:?set WT_DATA_MOUNT to the data disk mount point (/mnt/lima-<d
 #   are not free. Persisting the default path (instead of introducing a
 #   PLAYWRIGHT_BROWSERS_PATH env var every consumer would need to know) also
 #   lets an ad-hoc `npx playwright install` land on the disk automatically.
-LINKS="${WT_DATA_LINKS:-repos .wt-meta .claude .codex .config/gh .config/wt .azure .cache/ms-playwright}"
+LINKS="${WT_DATA_LINKS:-repos .wt-meta .claude .codex .config/gh .config/wt .azure .cache/ms-playwright .cache/node}"
 FILES="${WT_DATA_FILES:-.claude.json}"
 EXTRA="${WT_DATA_EXTRA:-}"
 
