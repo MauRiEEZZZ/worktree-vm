@@ -14,3 +14,8 @@ _wt_model_get() { cat "$WT_META/$1.model" 2>/dev/null; }
 # Per-session priority (p1|p2|p3, default p2) for the dashboard triage/sort. Editable anytime.
 _wt_priority_set() { mkdir -p "$WT_META"; printf '%s\n' "$2" > "$WT_META/$1.priority"; }
 _wt_priority_get() { local p; p="$(cat "$WT_META/$1.priority" 2>/dev/null)"; echo "${p:-p2}"; }
+# Directories OUTSIDE the worktree this session may reach (space-separated), so
+# wt-resume re-seeds the same additionalDirectories instead of silently narrowing
+# a reviewer's access on its first restart.
+_wt_readdirs_set() { mkdir -p "$WT_META"; if [ -n "$2" ]; then printf '%s\n' "$2" > "$WT_META/$1.readdirs"; else rm -f "$WT_META/$1.readdirs"; fi; }
+_wt_readdirs_get() { cat "$WT_META/$1.readdirs" 2>/dev/null; }

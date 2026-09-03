@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# claude stub: the launch path must be exercisable without starting a real agent.
+# Records the argv (so a test can assert what wt-* would have launched) and exits,
+# which just ends the tmux pane — the private test socket, never the operator's.
+[ -n "${STUB_LOG:-}" ] && printf 'claude %s\n' "$*" >> "$STUB_LOG"
+exit 0
