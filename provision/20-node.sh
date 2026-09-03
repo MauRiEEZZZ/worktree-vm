@@ -26,3 +26,24 @@ sudo corepack enable
 sudo tee /etc/profile.d/corepack.sh >/dev/null <<'EOF'
 export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 EOF
+
+# ---------------------------------------------------------------------------
+# Verify what this step promises, instead of assuming it.
+# "npm was missing on a fresh instance" was reported on 2026-09-03. It could not
+# be reproduced afterwards and the two obvious suspects are ruled out: on the VM
+# it was reported from, /usr/bin/npm is the NodeSource symlink and dpkg still owns
+# it, and `corepack enable` was measured on corepack 0.35.0 to create shims for
+# pnpm/pnpx/yarn/yarnpkg ONLY — never npm — so corepack cannot have shadowed it.
+# Rather than fix a cause we have not found, make a recurrence impossible to miss:
+# a half-finished install stops provisioning here, loudly, instead of surfacing
+# hours later as a session that cannot install anything.
+_missing=""
+for _c in node npm npx corepack pnpm yarn; do
+  command -v "$_c" >/dev/null 2>&1 || _missing="$_missing $_c"
+done
+if [ -n "$_missing" ]; then
+  echo "ERROR: the node step finished but these are not on PATH:$_missing" >&2
+  echo "       (nodejs from NodeSource ships node+npm+npx; corepack enable adds pnpm/yarn)" >&2
+  exit 1
+fi
+echo "node $(node -v), npm $(npm -v), corepack $(corepack --version); pnpm + yarn on PATH via corepack"
