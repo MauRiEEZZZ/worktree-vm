@@ -24,9 +24,12 @@ it away and rebuild it in minutes — while your worktrees, session history and 
 - **`wt-*` commands** for everything: `wt-ls` (pipeable: `wt-ls | grep stopped | wt-resume`),
   `wt-resume`, `wt-rm` (safe by default, tombstones metadata), `wt-restore` (deleted session +
   its preserved conversation come back), `wt-review` (independent Claude+Codex second-opinion
-  review of a session's work), `wt-seed-main`, `wt-env`, `wt-ide`. Tab completion included.
-- **Dashboard** (localhost web UI): create sessions from a task or a pasted issue/PR URL; grouped
-  into work-in-progress → waiting on review (derived from the PR state) → parked (one click,
+  review of a session's work), `wt-handoff` (the session is blocked on an outward step you must
+  do — it lands at the top of the dashboard), `wt-seed-main`, `wt-env`, `wt-ide`. Tab completion
+  included.
+- **Dashboard** (localhost web UI): create sessions from a task or a pasted issue/PR URL;
+  grouped into handed-over (a session waiting on a push or a draft PR you must do)
+  → work-in-progress → waiting on review (derived from the PR state) → parked (one click,
   keeps everything running) → done/stopped, with priorities, working/waiting badges and an
   optional LLM attention digest that reads the idle panes for you; PR + CI badges, one-click
   resume/review/delete/restore, per-session copy-attach one-liners — and an optional watcher

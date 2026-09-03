@@ -128,6 +128,19 @@ function writeParked(sid, on) {
     return true;
   } catch { return false; }
 }
+// Handoff marker: a session that has finished everything it is allowed to do and
+// now needs an OUTWARD step (a push, a draft PR) writes one line here with `wt-handoff`.
+// It exists because "the session says so in its pane" is not a signal anyone sees:
+// twice on 2026-09-03 finished work sat waiting — 3 hours on one PR, 16 on another —
+// while the session was, correctly, refusing to push on its own. Cleared by whoever
+// does the outward step.
+function readHandoff(sid) {
+  try { return fs.readFileSync(path.join(WT_META, sid + '.handoff'), 'utf8').split('\n')[0].trim() || null; }
+  catch { return null; }
+}
+function clearHandoff(sid) {
+  try { fs.rmSync(path.join(WT_META, sid + '.handoff'), { force: true }); return true; } catch { return false; }
+}
 // Idle-since tracking: stamp when a session first goes idle, clear when it works again.
 function idleSince(sid, isIdle) {
   const f = path.join(WT_META, sid + '.idle_since');
@@ -331,6 +344,9 @@ async function buildSessions() {
       // waitingReview is pre-resolved here so every consumer (UI grouping and
       // the digest) applies the same rule.
       parked, waitingReview: !parked && isWaitingReview(pr),
+      // Handed over beats every derived state: the session has said, in words, that
+      // it is blocked on a person. Parking still wins — that is an explicit "not now".
+      handoff: parked ? null : readHandoff(s.sid),
       working: att.working, recap: att.recap,
       waitingMs: (waitingSince && !att.working) ? (Date.now() - waitingSince) : null,
       attached: !!(tmux[s.sid] && tmux[s.sid].attached),
@@ -425,8 +441,9 @@ async function createSession(body) {
 // Periodically ask GitHub for open PRs where review is requested from the authenticated
 // user (scoped to PR_REVIEW_OWNER); for each PR in a known repo, auto-start a review
 // dev-session (on the PR's branch) with a "review + ask before posting" prompt.
-// A persistent ledger (review-seen.json) makes it idempotent — one session per PR, and it
-// won't recreate a session you deleted.
+// A persistent ledger (review-seen.json) makes it idempotent per REVIEWED STATE, not per
+// PR: it records the head SHA each round was started on, so the same request is never
+// handled twice, while new commits from the author DO get a fresh round.
 function readSeen() { try { return JSON.parse(fs.readFileSync(REVIEW_SEEN, 'utf8')); } catch { return {}; } }
 function writeSeen(o) { try { fs.mkdirSync(WT_META, { recursive: true }); fs.writeFileSync(REVIEW_SEEN, JSON.stringify(o, null, 2)); } catch {} }
 // main-clone path for a repo key (mirrors the bash _wt_clonepath: config override wins)
@@ -448,16 +465,35 @@ function existingSessionPrs() {
   return set;
 }
 // A git branch can be checked out in only one worktree; if the PR's head branch is already
-// out, a review worktree can't be created — skip (a session for it effectively exists).
-async function branchCheckedOut(key, branch) {
-  if (!branch) return false;
+// out, a review worktree can't be created. Returns WHICH worktree has it (or null): on a
+// repeat round that worktree holds the session that must look at the new commits, and it
+// can be told so directly.
+async function worktreeForBranch(key, branch) {
+  if (!branch) return null;
   const { out } = await run('git', ['-C', clonePathFor(key), 'worktree', 'list', '--porcelain']);
-  return out.split('\n').some(l => l.trim() === `branch refs/heads/${branch}`);
+  let cur = null;
+  for (const line of out.split('\n')) {
+    const l = line.trim();
+    if (l.startsWith('worktree ')) cur = l.slice(9);
+    else if (l === `branch refs/heads/${branch}`) return cur;
+  }
+  return null;
 }
-function reviewPrompt(pr, repoFull) {
+// Session id of a worktree at ~/wt/<repo>/<name>, or null when it lives elsewhere.
+function sidOfWorktree(dir) {
+  const rel = path.relative(WT_TREES, dir).split(path.sep);
+  return (rel.length === 2 && rel[0] && !rel[0].startsWith('..')) ? sidOf(rel[0], rel[1]) : null;
+}
+function reviewPrompt(pr, repoFull, since) {
   return [
     `You have been asked to review GitHub pull request #${pr.number} in ${repoFull}: "${pr.title}".`,
     pr.url,
+    ...(since ? [
+      `This is a REPEAT review: you (this watcher) already reviewed this PR at commit ${since}, and the author has pushed since.`,
+      `Concentrate on what changed: git fetch origin && git diff ${since}..HEAD . Check that the earlier findings were actually addressed`,
+      `(gh pr view ${pr.number} --repo ${repoFull} --comments shows what was said), and review the new commits on their own merits.`,
+      `Do not repeat findings that the new commits already fix.`,
+    ] : []),
     `You are on the PR branch in this worktree. Do a thorough, independent review:`,
     `- Read the PR: gh pr view ${pr.number} --repo ${repoFull} --comments  and  gh pr diff ${pr.number} --repo ${repoFull}`,
     `- Judge correctness, tests, scope and the repo's conventions.`,
@@ -486,31 +522,66 @@ async function pollReviewRequests() {
       const ledgerKey = `${full}#${pr.number}`;
       const key = byFull[full];
       if (!key) { console.log(`[pr-review] skip ${ledgerKey} (repo not in wt registry)`); continue; }
-      if (seen[ledgerKey]) continue;                     // already handled in a previous poll
+      // The head SHA — not the mere existence of a ledger entry — decides whether
+      // there is work. A ledger keyed on the PR alone made the watcher a ONE-SHOT:
+      // after the author pushed fixes and re-requested review, the PR came back in
+      // this very search and was skipped forever, so round two never started
+      // (measured 2026-09-03; two PRs sat waiting).
+      const { out: hj } = await gh(['pr', 'view', String(pr.number), '--repo', pr.repository.nameWithOwner,
+        '--json', 'headRefName,headRefOid']);
+      let head = {}; try { head = JSON.parse(hj || '{}'); } catch {}
+      const headRef = (head.headRefName || '').trim();
+      const headSha = (head.headRefOid || '').trim();
+      const prev = seen[ledgerKey];
+      // No head SHA (a gh hiccup) -> fall back to the old behaviour and skip a PR we
+      // have already handled, rather than guessing that it moved and spawning twice.
+      if (prev && (!headSha || prev.headSha === headSha)) continue;
+      const round = prev ? (prev.round || 1) + 1 : 1;
+      const since = prev && prev.headSha && prev.headSha !== headSha ? prev.headSha : null;
+      if (since) console.log(`[pr-review] ${ledgerKey} moved ${since.slice(0, 8)} -> ${headSha.slice(0, 8)}, round ${round}`);
       // Dedup: don't duplicate a PR you already have a session for.
       if (existing.has(ledgerKey)) {
-        seen[ledgerKey] = { skipped: 'session-exists', at: Date.now() }; writeSeen(seen);
+        seen[ledgerKey] = { ...prev, skipped: 'session-exists', headSha, round, at: Date.now() }; writeSeen(seen);
         console.log(`[pr-review] skip ${ledgerKey} (session already exists)`); continue;
       }
       // Branch guard: a PR branch already checked out can't get a second worktree.
-      const { out: hr } = await gh(['pr', 'view', String(pr.number), '--repo', pr.repository.nameWithOwner, '--json', 'headRefName', '-q', '.headRefName']);
-      const headRef = (hr || '').trim();
-      if (await branchCheckedOut(key, headRef)) {
-        seen[ledgerKey] = { skipped: 'branch-checked-out', at: Date.now() }; writeSeen(seen);
-        console.log(`[pr-review] skip ${ledgerKey} (branch ${headRef} already checked out)`); continue;
+      // On a repeat round that is the NORMAL case — the previous round's worktree is
+      // still there — and it is also the right answer: the session holding the branch
+      // has the context. So instead of skipping quietly, hand the work to it, through
+      // the same marker a session uses itself. A line in a log nobody tails is how the
+      // one-shot bug stayed invisible for weeks; this one is on the dashboard.
+      const holder = await worktreeForBranch(key, headRef);
+      if (holder) {
+        seen[ledgerKey] = { ...prev, skipped: 'branch-checked-out', headSha, round, at: Date.now() }; writeSeen(seen);
+        const hsid = since ? sidOfWorktree(holder) : null;
+        if (hsid) {
+          try {
+            fs.mkdirSync(WT_META, { recursive: true });
+            fs.writeFileSync(path.join(WT_META, hsid + '.handoff'),
+              `${ledgerKey} has new commits since ${since.slice(0, 8)} — review round ${round}\n`);
+          } catch {}
+        }
+        console.log(since
+          ? `[pr-review] ${ledgerKey}: new commits since ${since.slice(0, 8)} — handed to ${hsid || holder} (round ${round})`
+          : `[pr-review] skip ${ledgerKey} (branch ${headRef} already checked out in ${holder})`);
+        continue;
       }
       // One review session per PR (on the PR branch, --auto --deny-post + Remote
       // Control). It gets a second opinion from Codex via the codex MCP server (added user-
       // scoped, uses the same `codex login` auth) — see reviewPrompt — so it's one session with
       // two AI opinions, consolidated, and it asks before anything is posted.
-      const name = `review-${pr.number}`;
-      if (fs.existsSync(path.join(WT_TREES, key, name))) { seen[ledgerKey] = { sid: sidOf(key, name), at: Date.now() }; writeSeen(seen); continue; }
-      if (PR_REVIEW_DRYRUN) { console.log(`[pr-review] DRYRUN would start ${sidOf(key, name)} for ${ledgerKey} — "${pr.title}"`); continue; }
+      const name = round > 1 ? `review-${pr.number}-r${round}` : `review-${pr.number}`;
+      if (fs.existsSync(path.join(WT_TREES, key, name))) { seen[ledgerKey] = { sid: sidOf(key, name), headSha, round, at: Date.now() }; writeSeen(seen); continue; }
+      if (PR_REVIEW_DRYRUN) { console.log(`[pr-review] DRYRUN would start ${sidOf(key, name)} for ${ledgerKey} — "${pr.title}"${since ? ` (round ${round}, since ${since.slice(0, 8)})` : ''}`); continue; }
       // model: the watcher's own key; 'default' = explicitly the account default,
       // so an empty key never lets a watcher review inherit the dev default_model.
-      const r = await createSession({ repo: key, agent: 'claude', name, auto: true, denyPost: true, model: PR_REVIEW_MODEL || 'default', prompt: reviewPrompt(pr, repos[key]) });
-      if (r && !r.error) { seen[ledgerKey] = { sid: r.id, at: Date.now() }; writeSeen(seen); console.log(`[pr-review] started ${r.id} for ${ledgerKey}`); }
-      else { seen[ledgerKey] = { error: r && r.error, at: Date.now() }; writeSeen(seen); console.error(`[pr-review] create failed for ${ledgerKey}:`, r && r.error); }
+      const r = await createSession({ repo: key, agent: 'claude', name, auto: true, denyPost: true, model: PR_REVIEW_MODEL || 'default', prompt: reviewPrompt(pr, repos[key], since) });
+      if (r && !r.error) { seen[ledgerKey] = { sid: r.id, headSha, round, at: Date.now() }; writeSeen(seen); console.log(`[pr-review] started ${r.id} for ${ledgerKey} (round ${round})`); }
+      // NOTE: no headSha on the error path. Recording it would mark the PR "handled at
+      // this commit" and the round would be lost until the author pushed again — a
+      // transient gh failure silently costing a review. Leaving it means the next poll
+      // retries, and the error is logged each time until it stops failing.
+      else { seen[ledgerKey] = { ...prev, error: r && r.error, at: Date.now() }; writeSeen(seen); console.error(`[pr-review] create failed for ${ledgerKey}:`, r && r.error); }
     }
   } catch (e) { console.error('[pr-review] poll error:', (e && e.message) || e); }
 }
@@ -532,7 +603,7 @@ async function runDigest() {
     // are "not my problem right now" states, so the digest must not keep
     // demanding attention for them — exactly the clutter parking exists to remove.
     const idle = sessions.filter(s => s.status === 'running' && !s.working
-      && !s.parked && !s.waitingReview);
+      && !s.parked && !s.waitingReview && !s.handoff);
     if (!idle.length) { lastDigest = { at: Date.now(), items: [], running: false }; return lastDigest; }
     const payload = idle.map(s => ({ sid: s.id, name: s.name, repo: s.repo, priority: s.priority, recap: s.recap, tail: (s.activity || '').split('\n').slice(-8).join('\n') }));
     const prompt = [
@@ -726,6 +797,12 @@ const server = http.createServer(async (req, res) => {
       const body = await readBody(req);
       if (!writeParked(sid, !!body.parked)) return send(res, 500, { error: 'could not update the parked marker' });
       return send(res, 200, { id: sid, parked: !!body.parked });
+    }
+    if (req.method === 'DELETE' && /^\/api\/sessions\/[^/]+\/handoff$/.test(p)) {
+      // the outward step has been done (or refused) — drop the flag
+      const sid = decodeURIComponent(p.split('/')[3]);
+      if (!clearHandoff(sid)) return send(res, 500, { error: 'could not clear the handoff marker' });
+      return send(res, 200, { id: sid, handoff: null });
     }
     if (req.method === 'POST' && /^\/api\/sessions\/[^/]+\/model$/.test(p)) {
       // change the session's model via wt-model: sets the marker and relaunches
