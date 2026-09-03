@@ -14,13 +14,17 @@ _wt_agent_cmd() {
       if [ "$mode" = resume ]; then c="codex resume --last"; else c="codex"; fi
       [ "$auto" = 1 ] && c="$c --dangerously-bypass-approvals-and-sandbox"
       [ -n "$model" ] && c="$c -c $(printf %q "model=$model")"
-      { [ "$mode" != resume ] && [ -n "$task" ]; } && c="$c $(printf %q "$task")"
+      # A task on RESUME is allowed: `codex resume --last [PROMPT]` and
+      # `claude --continue [prompt]` both take one, and a restarted session that is
+      # handed its next step immediately costs one launch instead of a launch plus a
+      # round of messages to wake it up.
+      [ -n "$task" ] && c="$c $(printf %q "$task")"
       echo "$c" ;;
     *)  # claude (default) -- normal permission mode; auto/deny-post live in settings.local.json
       if [ "$mode" = resume ]; then c="claude --continue --remote-control $(printf %q "$label")";
       else c="claude --name $(printf %q "$label") --remote-control $(printf %q "$label")"; fi
       [ -n "$model" ] && c="$c --model $(printf %q "$model")"   # override the default (e.g. a cheap model for auto-reviews)
-      { [ "$mode" != resume ] && [ -n "$task" ]; } && c="$c $(printf %q "$task")"
+      [ -n "$task" ] && c="$c $(printf %q "$task")"
       echo "$c" ;;
   esac
 }
