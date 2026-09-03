@@ -3,7 +3,7 @@
 _wt_help() {
   case "$1" in
     wt-new) cat <<'H'
-wt-new <repo> <name> [--agent claude|codex] [--auto] [--deny-post] [--model <alias>] [--branch <existing>] [task... | --task-b64 <b64>]
+wt-new <repo> <name> [--agent claude|codex] [--auto] [--deny-post] [--model <alias>] [--branch <existing>] [--read-dir <path>] [task... | --task-b64 <b64>]
   New worktree session: ~/wt/<repo>/<name> on branch feat/<name> from the repo's
   default branch (clone-on-demand). Restores dependencies (.slnx/.sln->dotnet,
   package.json->npm/pnpm), inherits gitignored local config (.env*,
@@ -28,13 +28,25 @@ wt-new <repo> <name> [--agent claude|codex] [--auto] [--deny-post] [--model <ali
   The optional task = opening prompt. --task-b64 <b64> = quoting-safe task.
   --branch <existing> checks out an existing branch (e.g. the branch of a PR you
   want to continue) instead of creating a new feat/<name>.
+  --read-dir <path> (repeatable) lets the session reach a directory OUTSIDE its
+  worktree: a reviewer needs the dev worktree it reviews, and a session whose plan
+  file lives in ~/.wt-meta needs that directory. Without it the first read there
+  is refused and an unattended session stops dead ("3 consecutive actions were
+  blocked"). It grants ACCESS, not read-only access — Claude has no read-only
+  directory tier, so "look, don't touch" stays a job for the task text. The paths
+  are remembered, so wt-resume re-seeds them.
 H
 ;;
     wt-resume) cat <<'H'
-wt-resume <repo> <name>
+wt-resume <repo> <name> [--task <text> | --task-b64 <b64>]
   Reopen an existing (stopped) session in tmux and resume the conversation with
   the same agent it was created with (claude --continue + Remote Control, or
   codex resume --last). If the session still runs, you're simply attached.
+  --task hands the resumed session its next step in the same launch (both agents
+  take a prompt alongside continue/resume), so restarting a crashed session costs
+  one command instead of a launch plus a round of messages to wake it up. It is
+  ignored — and says so — when the session is already running: a live session is
+  reached over Remote Control, not by relaunching it.
 H
 ;;
     wt-push) cat <<'H'
@@ -121,6 +133,18 @@ wt-rm <repo> <name> [-f]
   (refuses on an unmerged or dirty worktree); -f forces (discards unsaved work).
 H
 ;;
+    wt-handoff) cat <<'H'
+wt-handoff [<repo> <name>] "<one line>"   |   wt-handoff --clear
+  Say that this session is done with everything it may do itself and is now
+  blocked on an OUTWARD step — a push, a draft PR — that belongs to whoever is
+  talking to the user. The dashboard lifts the session into its own section at
+  the top, with your line, until someone clicks "done".
+  Use it INSTEAD of only announcing it in your pane: a sentence in a pane nobody
+  is looking at is not a handover. Two sessions did exactly that on 2026-09-03
+  and their finished work sat for 3 and 16 hours.
+  Inside a worktree the repo and name come from the path.
+H
+;;
     wt-env) cat <<'H'
 wt-env <repo> [name]
   (Re)copy gitignored local config (.env*, appsettings.*.json, *.local.json) from
@@ -162,6 +186,7 @@ wt — parallel AI dev sessions (Claude Code / OpenAI Codex) on git worktrees
   wt-ide-stop [<repo> <name>]    stop the (only) running IDE backend
   wt-ls                          show all sessions
   wt-model <repo> <name> <m>     change a session's model (+relaunch, keeps the conversation)
+  wt-handoff ["<one line>"]      hand the session over: it needs an outward step you must do
   wt-env <repo> [name]           local config (.env*, appsettings.*.json) from main clone to worktree(s)
   wt-seed-main [<key>]           seed the main clone with local config from the secrets source
   wt-rm <repo> <name> [-f]       remove worktree + branch

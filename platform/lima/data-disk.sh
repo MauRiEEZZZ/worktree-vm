@@ -18,6 +18,13 @@
 # WHAT must persist and why (losing any of these on a rebuild hurts):
 #   ~/repos, clone_paths   the main clones
 #   ~/.claude ~/.codex ~/.config/gh ~/.azure   agent + CLI auth/state
+#   ~/.microsoft/usersecrets  .NET user-secrets — the same category as the auth above,
+#                          and the one that bites hardest: Aspire AppHosts take secrets
+#                          (a SQL password) as required parameters, so a rebuild without
+#                          them means the app does not start at all. Worse, the password
+#                          was baked into a persisted SQL Server data volume, so
+#                          regenerating it is not a fix either (measured 2026-09-03 on
+#                          vidara.portal).
 #   ~/.config/wt           the wt config + derived env
 #   ~/.wt-meta             per-session markers (agent/flags/model/priority)
 #   ~/.cache/node          corepack's package-manager downloads (pnpm/yarn per repo
@@ -47,7 +54,7 @@ D="${WT_DATA_MOUNT:?set WT_DATA_MOUNT to the data disk mount point (/mnt/lima-<d
 #   are not free. Persisting the default path (instead of introducing a
 #   PLAYWRIGHT_BROWSERS_PATH env var every consumer would need to know) also
 #   lets an ad-hoc `npx playwright install` land on the disk automatically.
-LINKS="${WT_DATA_LINKS:-repos .wt-meta .claude .codex .config/gh .config/wt .azure .cache/ms-playwright .cache/node}"
+LINKS="${WT_DATA_LINKS:-repos .wt-meta .claude .codex .config/gh .config/wt .azure .microsoft/usersecrets .cache/ms-playwright .cache/node}"
 FILES="${WT_DATA_FILES:-.claude.json}"
 EXTRA="${WT_DATA_EXTRA:-}"
 

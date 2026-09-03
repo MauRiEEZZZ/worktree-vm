@@ -58,6 +58,8 @@
   .sec .cnt { display:inline-block; min-width:18px; text-align:center; background:var(--line); color:var(--fg); border-radius:10px; font-size:11px; padding:0 6px; }
   .sec-review h2 { color:#7db8ff; } .sec-review .cnt { background:#10233b; color:#7db8ff; }
   .sec-parked h2 { color:var(--mut); }
+  .sec-handoff h2 { color:#ffcf6b; }
+  .handoff { margin-top:8px; font-size:13px; color:#ffe6ad; padding:6px 10px; border-radius:8px; background:#1c1608; border-left:3px solid #ffcf6b; }
   .repo { font-size:11px; padding:2px 9px; border-radius:20px; color:#04101f; background:var(--blu); font-weight:600; }
   .links { margin-left:auto; display:flex; gap:8px; align-items:center; }
   a.link { color:var(--blu); text-decoration:none; font-size:13px; border:1px solid var(--line); padding:5px 10px; border-radius:7px; }
@@ -214,6 +216,7 @@ function card(s){
         <button class="danger" data-rm="${esc(s.id)}">delete</button>
       </span>
     </div>
+    ${s.handoff ? `<div class="handoff" title="the session is blocked on an outward step it may not do itself">🫱 ${esc(s.handoff)} <button data-handoffdone="${esc(s.id)}" style="font-size:11px;margin-left:6px" title="the outward step is done (or refused) — clear the flag">✓ done</button></div>` : ''}
     ${s.recap ? `<div class="recap ${attCls}" title="latest state of the session">${esc(s.recap)}</div>` : (s.task ? `<div class="task">${esc(s.task.split('\n')[0])}</div>` : '')}
     ${s.activity ? `<pre class="act">${esc(s.activity)}</pre>` : ''}
   </div>`;
@@ -265,8 +268,13 @@ async function load(){
     // parked-beats-waitingReview precedence is resolved server-side.
     const pRank = p => ({p1:0,p2:1,p3:2}[p||'p2']);
     const parked = data.filter(s => s.parked);
-    const waitingRev = data.filter(s => !s.parked && s.waitingReview);
-    const active = data.filter(s => !s.parked && !s.waitingReview);
+    // Handed over first, and out of every other group: these are the sessions whose
+    // work is finished and sitting still until a person does the step they may not
+    // do themselves. Buried in "work in progress" they read as just another idle
+    // session, which is how one PR waited 3 hours and another 16.
+    const handed = data.filter(s => !s.parked && s.handoff);
+    const waitingRev = data.filter(s => !s.parked && !s.handoff && s.waitingReview);
+    const active = data.filter(s => !s.parked && !s.handoff && !s.waitingReview);
     const wip = active.filter(s => s.status==='running' || s.status==='starting')
       .sort((a,b) => pRank(a.priority)-pRank(b.priority) || (b.waitingMs||0)-(a.waitingMs||0));
     const rest = active.filter(s => !wip.includes(s));
@@ -277,7 +285,8 @@ async function load(){
         + `<button id="parkedToggle" style="font-size:11px">${window.PARKED_OPEN?'hide':'show'}</button></h2>`
         + (window.PARKED_OPEN ? parked.map(card).join('') : '') + `</div>`
       : '';
-    list.innerHTML = section('① Work in progress', wip, 'sec-work')
+    list.innerHTML = section('🫱 Handed over — waiting for you', handed, 'sec-handoff')
+      + section('① Work in progress', wip, 'sec-work')
       + section('② Waiting on review', waitingRev, 'sec-review')
       + parkedSection
       + section('③ Done &amp; stopped', rest, 'sec-rest');
@@ -286,6 +295,7 @@ async function load(){
     list.querySelectorAll('[data-prio]').forEach(sel => sel.onchange = () => setPriority(sel.getAttribute('data-prio'), sel.value, sel));
     list.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => remove(b.getAttribute('data-rm')));
     list.querySelectorAll('[data-park]').forEach(b => b.onclick = () => setParked(b.getAttribute('data-park'), b.getAttribute('data-parked')!=='1', b));
+    list.querySelectorAll('[data-handoffdone]').forEach(b => b.onclick = () => clearHandoff(b.getAttribute('data-handoffdone'), b));
     list.querySelectorAll('[data-model]').forEach(sel => sel.onchange = () => setModel(sel.getAttribute('data-model'), sel.value, sel));
     list.querySelectorAll('[data-attach]').forEach(b => b.onclick = () => copyAttach(b.getAttribute('data-attach'), b));
     list.querySelectorAll('[data-resume]').forEach(b => b.onclick = () => resume(b.getAttribute('data-resume'), b));
@@ -364,6 +374,12 @@ async function setModel(sid, model, sel){
   catch { alert('changing the model failed'); }
   [1500,5000].forEach(ms=>setTimeout(load, ms));
   load();
+}
+async function clearHandoff(sid, btn){
+  if(btn){ btn.disabled = true; }
+  try { await fetch('/api/sessions/'+encodeURIComponent(sid)+'/handoff', {method:'DELETE'}); }
+  catch { alert('clearing the handoff flag failed'); }
+  finally { if(btn) btn.disabled = false; load(); }
 }
 async function setParked(sid, parked, btn){
   if(btn){ btn.disabled = true; }

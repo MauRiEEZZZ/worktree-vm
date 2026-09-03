@@ -8,12 +8,16 @@ wt-new() {
   case "${1:-}" in -h|--help) _wt_help wt-new; return 0;; esac
   if [ $# -lt 2 ]; then echo "usage: wt-new <repo> <name> [--agent claude|codex] [--branch <existing>] [task... | --task-b64 <b64>]"; return 1; fi
   local key="$1" name="$2"; shift 2
-  local task="" existing="" fromref="" agent="$WT_AGENT_DEFAULT" auto=0 denypost=0 model="" priority=""
+  local task="" existing="" fromref="" agent="$WT_AGENT_DEFAULT" auto=0 denypost=0 model="" priority="" readdirs=""
   # options: --agent <claude|codex>, --branch <existing branch> (check out a PR
   #   branch instead of creating a new one), --from <ref> (new feat/<name> branch
   #   off <ref> instead of the default branch — e.g. a PR head, so two sessions can
   #   work the same PR code without a branch conflict), --auto, --deny-post,
   #   --model <alias> (override the default model; empty = your own default),
+  #   --read-dir <path> (repeatable: a directory OUTSIDE the worktree the session
+  #   must reach — a reviewer needs the dev worktree it reviews, and a session that
+  #   keeps its plan in $WT_META needs that; without it the first read there is
+  #   refused and an unattended session stops dead),
   #   --task-b64 <b64>, anything else = the task.
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -24,10 +28,13 @@ wt-new() {
       --deny-post) denypost=1; shift;;
       --model)    model="${2:-}"; shift 2;;
       --priority) priority="${2:-}"; shift 2;;
+      --read-dir) readdirs="$readdirs ${2:-}"; shift 2;;
       --task-b64) task=$(printf '%s' "${2:-}" | base64 -d 2>/dev/null); shift 2;;
       *)          task="$*"; break;;
     esac
   done
+  readdirs="${readdirs# }"
+
   case "$agent" in claude|codex) ;; *) echo "unknown agent: $agent (choose claude or codex)"; return 1;; esac
   command -v "$agent" >/dev/null 2>&1 || { echo "agent '$agent' is not installed on this machine"; return 1; }
   # COST KNOB: without an explicit --model, fall back to the configured
@@ -73,6 +80,7 @@ wt-new() {
   _wt_agent_set "$sid" "$agent"   # remember the chosen agent for resume/ls/dashboard
   _wt_flags_set "$sid" "$([ "$auto" = 1 ] && echo -n 'auto ')$([ "$denypost" = 1 ] && echo -n 'denypost')"  # so wt-resume relaunches the same way
   _wt_model_set "$sid" "$model"   # remember the model override (if any) for resume
+  _wt_readdirs_set "$sid" "$readdirs"   # and the outside-the-worktree dirs, so resume re-seeds them
   [ -n "$priority" ] && _wt_priority_set "$sid" "$priority"   # optional starting priority (editable later on the dashboard)
   # Session metadata, same shape the dashboard writes: without it, wt-rm's
   # tombstone has nothing to archive and a CLI-created session can't be restored
@@ -89,7 +97,7 @@ wt-new() {
   if [ -n "${WT_NO_LAUNCH:-}" ]; then echo "worktree: $dir  (branch $branch, $basedesc) [no-launch, agent $agent$([ "$auto" = 1 ] && echo -n ', auto')${model:+, model $model}]"; return 0; fi
   # Agent label: "wt/<repo>/<name>" — recognizable + grouped under the wt/ prefix (claude).
   local label="wt/$key/$name"
-  [ "$agent" = claude ] && _wt_seed_perms "$dir" "$auto" "$denypost"  # trust + settings.local so an --auto/--deny-post session launches unattended
+  [ "$agent" = claude ] && _wt_seed_perms "$dir" "$auto" "$denypost" "$readdirs"  # trust + settings.local so an --auto/--deny-post session launches unattended
   local cmd; cmd="$(_wt_agent_cmd "$agent" "$label" new "$task" "$auto" "$denypost" "$model")"
   _wt_hook agent-launch "$sid" "$dir" "$agent" new
   tmux new-session -d -s "$sid" -c "$dir" "$cmd"
@@ -101,20 +109,32 @@ wt-new() {
   else echo "attach with: tmux attach -t =$sid"; fi
 }
 
-# wt-resume <repo> <name> : reopen an existing worktree session in tmux and resume
-#   the last conversation (claude --continue) with Remote Control + the
-#   wt/<repo>/<name> name. Use after a VM restart (tmux gone) or on a 'stopped'
-#   session. If the tmux session still runs, this simply attaches to it.
+# wt-resume <repo> <name> [--task <text> | --task-b64 <b64>] : reopen an existing
+#   worktree session in tmux and resume the last conversation (claude --continue)
+#   with Remote Control + the wt/<repo>/<name> name. Use after a VM restart (tmux
+#   gone) or on a 'stopped' session. If the tmux session still runs, this simply
+#   attaches to it. --task hands the resumed session its next step in the same
+#   launch, instead of starting it idle and waking it up afterwards.
 wt-resume() {
   case "${1:-}" in -h|--help) _wt_help wt-resume; return 0;; esac
   _wt_pipe wt-resume "$@" && return   # batch: wt-ls | grep ... | wt-resume
-  if [ $# -lt 2 ]; then echo "usage: wt-resume <repo> <name>"; return 1; fi
+  if [ $# -lt 2 ]; then echo "usage: wt-resume <repo> <name> [--task <text> | --task-b64 <b64>]"; return 1; fi
   local key="$1" name="$2"
-  local dir="$WT_TREES/$key/$name" sid label agent flags auto=0 denypost=0 model
+  shift 2
+  local task=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --task)     shift; task="$*"; break;;
+      --task-b64) task=$(printf '%s' "${2:-}" | base64 -d 2>/dev/null); shift 2;;
+      *) echo "unknown option: $1 (usage: wt-resume <repo> <name> [--task <text> | --task-b64 <b64>])"; return 1;;
+    esac
+  done
+  local dir="$WT_TREES/$key/$name" sid label agent flags auto=0 denypost=0 model readdirs
   sid="$(_wt_sid "$key" "$name")"; label="wt/$key/$name"
   agent="$(_wt_agent_get "$sid")"   # resume with the same agent it was created with
   flags="$(_wt_flags_get "$sid")"   # and the same launch flags (auto / deny-post)
   model="$(_wt_model_get "$sid")"   # and the same model override (if any)
+  readdirs="$(_wt_readdirs_get "$sid")"   # and the same outside-the-worktree read access
   [[ "$flags" == *auto* ]] && auto=1; [[ "$flags" == *denypost* ]] && denypost=1
   [ -d "$dir" ] || { echo "no worktree: $dir (use wt-new to create one)"; return 1; }
   # `claude --continue` KEEPS the model of the ORIGINAL conversation — the
@@ -134,14 +154,17 @@ wt-resume() {
   fi
   if tmux has-session -t "=$sid" 2>/dev/null; then
     echo "session already running: $sid"
+    # A task can only ride along with a LAUNCH. Say that rather than dropping it:
+    # a silently ignored --task is how work goes missing.
+    [ -n "$task" ] && echo "  (--task ignored: the session is already running — talk to it over Remote Control)"
   elif [ -n "${WT_NO_LAUNCH:-}" ]; then
-    echo "would resume: $label ($agent${model:+, model $model}) in $dir [no-launch]"; return 0
+    echo "would resume: $label ($agent${model:+, model $model}) in $dir${task:+   (task: $task)} [no-launch]"; return 0
   else
-    [ "$agent" = claude ] && _wt_seed_perms "$dir" "$auto" "$denypost"  # idempotent: re-assert trust + settings.local before relaunch
+    [ "$agent" = claude ] && _wt_seed_perms "$dir" "$auto" "$denypost" "$readdirs"  # idempotent: re-assert trust + settings.local before relaunch
     _wt_hook agent-launch "$sid" "$dir" "$agent" resume
-    tmux new-session -d -s "$sid" -c "$dir" "$(_wt_agent_cmd "$agent" "$label" resume "" "$auto" "$denypost" "$model")"
+    tmux new-session -d -s "$sid" -c "$dir" "$(_wt_agent_cmd "$agent" "$label" resume "$task" "$auto" "$denypost" "$model")"
     _wt_apply_color "$sid" "$agent"   # re-apply the prompt-bar colour (it isn't persisted)
-    echo "resumed: $label ($agent)  (tmux $sid)"
+    echo "resumed: $label ($agent)  (tmux $sid)${task:+   (task: $task)}"
   fi
   if [ -n "${TMUX:-}" ]; then tmux switch-client -t "=$sid";
   elif [ -t 1 ]; then tmux attach -t "=$sid";
@@ -241,10 +264,13 @@ wt-review() {
   local task="You are an INDEPENDENT reviewer. Review the work-in-progress of dev session wt/$key/$name. The live dev worktree is at $devdir; the base is commit $base (merge-base with origin/$defbr), dev HEAD is $devhead. Scope=$scope. Inspect the changes read-only with: $diffcmd .$extra Read surrounding code (in this review worktree or via $devdir) for context where needed, but CHANGE nothing in $devdir. ALSO get an independent second opinion from Codex via the codex MCP server (the mcp__codex__* tools) on the same diff/scope; if the MCP tool fails, fall back to 'codex exec'. Consolidate both opinions into concrete findings (correctness/bugs, security, tests, edge cases, style) with file:line where possible, plus a short overall conclusion. REPORT ONLY: post NOTHING to GitHub and change no code -- this is pre-PR work-in-progress; report your findings here (the user reads along via Remote Control)."
   local b64; b64="$(printf '%s' "$task" | base64 | tr -d '\n')"
   echo "review session for wt/$key/$name (scope $scope, base ${base:0:12}${model:+, model $model}) -> wt/$key/$rname"
+  # --read-dir $devdir: the reviewer's whole job is to read a worktree that is not
+  # its own. Without it Claude refuses the first read/grep there and an unattended
+  # reviewer stops on "3 consecutive actions were blocked" (measured 2026-09-03).
   if [ -n "$model" ]; then
-    wt-new "$key" "$rname" --agent "$agent" --model "$model" --auto --deny-post --from "$devhead" --task-b64 "$b64"
+    wt-new "$key" "$rname" --agent "$agent" --model "$model" --auto --deny-post --read-dir "$devdir" --from "$devhead" --task-b64 "$b64"
   else
-    wt-new "$key" "$rname" --agent "$agent" --auto --deny-post --from "$devhead" --task-b64 "$b64"
+    wt-new "$key" "$rname" --agent "$agent" --auto --deny-post --read-dir "$devdir" --from "$devhead" --task-b64 "$b64"
   fi
 }
 
@@ -407,14 +433,14 @@ wt-rm() {
     tmux kill-session -t "=$sid" 2>/dev/null || true
     tmux kill-session -t "=ide-$sid" 2>/dev/null || true
     git -C "$repo" worktree remove --force "$dir" && git -C "$repo" branch -D "$branch" 2>/dev/null
-    rm -f "$WT_META/$sid.agent" "$WT_META/$sid.flags" "$WT_META/$sid.model" "$WT_META/$sid.priority" "$WT_META/$sid.idle_since" "$WT_META/$sid.parked"
+    rm -f "$WT_META/$sid.agent" "$WT_META/$sid.flags" "$WT_META/$sid.model" "$WT_META/$sid.priority" "$WT_META/$sid.idle_since" "$WT_META/$sid.parked" "$WT_META/$sid.readdirs" "$WT_META/$sid.handoff"
   else
     # safe: try to remove FIRST; only kill the sessions if the worktree is clean and removed
     git -C "$repo" worktree remove "$dir" || return 1
     tmux kill-session -t "=$sid" 2>/dev/null || true
     tmux kill-session -t "=ide-$sid" 2>/dev/null || true
     git -C "$repo" branch -d "$branch" 2>/dev/null
-    rm -f "$WT_META/$sid.agent" "$WT_META/$sid.flags" "$WT_META/$sid.model" "$WT_META/$sid.priority" "$WT_META/$sid.idle_since" "$WT_META/$sid.parked"
+    rm -f "$WT_META/$sid.agent" "$WT_META/$sid.flags" "$WT_META/$sid.model" "$WT_META/$sid.priority" "$WT_META/$sid.idle_since" "$WT_META/$sid.parked" "$WT_META/$sid.readdirs" "$WT_META/$sid.handoff"
   fi
   # TOMBSTONE the dashboard session metadata (if any) so a CLI delete is just as
   # restorable as a dashboard delete: move $WT_SESSIONS_DIR/<sid>.json -> archive/
@@ -425,6 +451,41 @@ wt-rm() {
     mkdir -p "$WT_SESSIONS_DIR/archive"
     node -e 'const fs=require("fs"),[p,a,s]=process.argv.slice(1);try{const j=JSON.parse(fs.readFileSync(p,"utf8"));j.deletedAt=Date.now();fs.writeFileSync(a+"/"+s+".json",JSON.stringify(j,null,2));fs.unlinkSync(p)}catch(e){}' "$_psf" "$WT_SESSIONS_DIR/archive" "$sid"
   fi
+}
+
+# wt-handoff [<repo> <name>] "<one line>" | --clear : say that this session is
+#   finished with everything it may do itself and is now blocked on an OUTWARD step
+#   (a push, a draft PR) that belongs to whoever is talking to the user.
+#
+#   It writes one line to $WT_META/<sid>.handoff, and the dashboard lifts the session
+#   into its own section at the top until someone clears it. That indirection is the
+#   point: a session announcing "I am ready" in its own pane is not a signal anybody
+#   sees. Measured 2026-09-03: two sessions did exactly that and correctly refused to
+#   push on their own — one waited 3 hours, the other 16.
+#   Inside a worktree the repo and name come from the path, so a session just runs
+#   `wt-handoff "ready for wt-push + draft PR: <title>"`.
+wt-handoff() {
+  case "${1:-}" in -h|--help) _wt_help wt-handoff; return 0;; esac
+  local clear=0 pos=() a
+  for a in "$@"; do case "$a" in --clear) clear=1;; *) pos+=("$a");; esac; done
+  # <repo> <name> only when BOTH are given and neither looks like prose: the common
+  # call is a bare message from inside the worktree.
+  local key name msg
+  if [ "${#pos[@]}" -ge 2 ] && [ -n "${WT_REPOS[${pos[0]}]:-}" ] && [ -d "$WT_TREES/${pos[0]}/${pos[1]}" ]; then
+    key="${pos[0]}"; name="${pos[1]}"; msg="${pos[*]:2}"
+  else
+    read -r key name <<<"$(_wt_resolve wt-handoff)" || return 1
+    msg="${pos[*]}"
+  fi
+  local sid; sid="$(_wt_sid "$key" "$name")"
+  if [ "$clear" = 1 ]; then
+    rm -f "$WT_META/$sid.handoff"; echo "handoff cleared: $sid"; return 0
+  fi
+  [ -n "$msg" ] || { echo 'usage: wt-handoff [<repo> <name>] "<one line: what you need done>"  |  wt-handoff --clear'; return 1; }
+  mkdir -p "$WT_META"
+  printf '%s\n' "${msg//$'\n'/ }" > "$WT_META/$sid.handoff"
+  echo "handed over: $sid — $msg"
+  echo "(it is at the top of the dashboard now; do not do the outward step yourself)"
 }
 
 # wt-env <repo> [name] : (re)copy the gitignored local config (.env*, appsettings.*.json)
