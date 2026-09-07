@@ -27,6 +27,14 @@ RestartSec=3
 # cgroup. KillMode=process stops only the node process and leaves the sessions
 # running; they are meant to outlive the dashboard, which is exactly why they are
 # detached in the first place.
+#
+# If a restart kills sessions anyway, this line is not necessarily the liar: a
+# drop-in under /etc/systemd/system/wt-dashboard.service.d/ silently overrides the
+# unit file, so the template can say one thing and the running unit do another.
+# `systemctl cat wt-dashboard` shows what is actually in force, base plus every
+# drop-in, in the order they win. (One such drop-in existed on 2026-09-07 — added
+# in good faith to re-assert exactly this setting, and left behind as a trap for
+# whoever next changes it deliberately.)
 KillMode=process
 
 [Install]
