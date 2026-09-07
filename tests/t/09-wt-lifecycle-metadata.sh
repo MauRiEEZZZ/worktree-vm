@@ -6,7 +6,11 @@
 # Real git, real tmux (private socket via the shim), gh stubbed.
 . "$(dirname "$0")/../lib.sh"
 t_sandbox_home
-t_use_stubs gh
+# The claude stub is required, not decoration: wt-new checks `command -v claude`
+# before it does anything, so on a machine without the agent — every CI runner —
+# it returns early and this test's subject never exists. It passed locally only
+# because the dev VM happens to have claude installed.
+t_use_stubs gh claude
 export WT_NO_LAUNCH=1
 
 # a local "remote" + pre-seeded clone so nothing talks to GitHub
