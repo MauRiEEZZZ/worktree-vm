@@ -12,6 +12,11 @@ set -eu -o pipefail
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export REPO_DIR
 
+# ---- is this checkout the one you think it is? ------------------------------
+# shellcheck source=lib/repo-freshness.sh
+. "$REPO_DIR/lib/repo-freshness.sh"
+wt_warn_if_behind "$REPO_DIR"
+
 # ---- sanity ----------------------------------------------------------------
 if [ "$(id -u)" = 0 ]; then
   echo "Run install.sh as your normal user — it uses sudo where root is needed." >&2

@@ -23,9 +23,10 @@ copy of the config (seeded once at first boot, never overwritten), so editing
 the host file alone changes nothing. Run `platform/lima/up.sh --sync-config`
 to push the host config into the running guest, regenerate the derived env and
 restart the dashboard — no VM restart. Provisioning-level changes (`stacks:`)
-additionally need `bash ~/worktree-vm/install.sh` inside the guest (always via
-`install.sh`, which loads the derived env — a standalone `provision/90-stacks.sh`
-does not see your config). Platform facts (`lima:` cpus/memory/ports/disks)
+additionally need `git -C ~/worktree-vm pull --ff-only && bash ~/worktree-vm/install.sh`
+inside the guest — the pull because `install.sh` provisions the clone it is in and
+only a boot pulls that clone, and `install.sh` rather than a bare
+`provision/90-stacks.sh` because only the former loads the derived env. Platform facts (`lima:` cpus/memory/ports/disks)
 always require `limactl delete` + `up.sh`. On WSL2 there is no host/guest
 config split — edit `~/.config/wt/config.yaml` in the distro directly.
 

@@ -126,7 +126,7 @@ if [ "$SYNC_CONFIG" = 1 ]; then
   echo "note: the dashboard was restarted. Sessions survive that (unit sets KillMode=process);"
   echo "      if any session is missing, check that the unit has it: systemctl show wt-dashboard -p KillMode"
   echo "Provisioning-level changes (stacks:, agents) additionally need one idempotent run in the guest (no restart):"
-  echo "  limactl shell $INSTANCE -- bash worktree-vm/install.sh"
+  echo "  limactl shell $INSTANCE -- bash -lc 'git -C ~/worktree-vm pull --ff-only && bash ~/worktree-vm/install.sh'"
   echo "Platform facts (cpus/memory/ports/disks) still require: limactl delete $INSTANCE, then up.sh (work survives on the data disk)."
   exit 0
 fi
@@ -139,8 +139,12 @@ if [ "$INSTANCE_STATUS" = "Running" ]; then
   echo
   echo "  config-only changes:      $0 --sync-config"
   echo "      (pushes the host config into the guest, regenerates the derived env, restarts the dashboard; no VM restart)"
-  echo "  re-run full provisioning: limactl shell $INSTANCE -- bash worktree-vm/install.sh"
-  echo "      (idempotent, applies stacks/agents changes; no VM restart)"
+  echo "  re-run full provisioning: limactl shell $INSTANCE -- bash -lc 'git -C ~/worktree-vm pull --ff-only && bash ~/worktree-vm/install.sh'"
+  echo "      (idempotent, applies stacks/agents changes; no VM restart. The pull is NOT"
+  echo "       optional: install.sh provisions the clone it is IN, and only the boot-time"
+  echo "       step pulls that clone — so without it you re-provision the old core. And"
+  echo "       'limactl shell' starts in the host cwd mapped into the guest, not \$HOME,"
+  echo "       so the paths must be absolute.)"
   echo "  full reboot + provision:  limactl stop $INSTANCE && limactl start $INSTANCE"
   echo "      (WARNING: restarts the VM — every running tmux/agent session is killed)"
   echo "  platform facts (cpus/memory/ports/disks): limactl delete $INSTANCE, then up.sh"
