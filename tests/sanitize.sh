@@ -13,13 +13,16 @@ cd "$(dirname "$0")/.."
 FORBIDDEN="$(printf '%s' 'd29ydGVsbHx2aWRhcmF8L1VzZXJzL21hdXJpY2V8bGltYS12aWRhcmEtZGV2fHZpZGFyYS1kYXRhfGF6dXJld2Vic2l0ZXN8YXp1cmVzdGF0aWNhcHBzfGZhYmxlfDcyMTV8MTcwMDF8NTE3M3w1MTc0fHBvcnRhbC0=' | base64 -d)"
 LEFTOVERS="$(printf '%s' 'c2Vzc2llfHZlcndpamRlcnxnZWVuIHxhYW5tYWtlbnxiZXN0YWF0fG1pc2x1a3R8aGVydmF0fG9wZHJhY2h0fCB0YWFrfG9uYmVrZW5kZXxvdmVyc2xhYW4=' | base64 -d)"
 
+# --untracked so a brand-new file is checked BEFORE it is committed — otherwise the
+# check passes locally and only fails in CI, which is where this went wrong on
+# 2026-09-07. Ignored files stay excluded (that is git grep's default).
 fail=0
-if git grep -nIiE "$FORBIDDEN" -- .; then
+if git grep -nIiE --untracked "$FORBIDDEN" -- .; then
   echo "FAIL: forbidden strings found (see above)"; fail=1
 else
   echo "ok: no forbidden strings"
 fi
-if git grep -nIiE "$LEFTOVERS" -- .; then
+if git grep -nIiE --untracked "$LEFTOVERS" -- .; then
   echo "FAIL: source-language leftovers found (see above)"; fail=1
 else
   echo "ok: no source-language leftovers"
