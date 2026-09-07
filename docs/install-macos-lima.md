@@ -161,8 +161,16 @@ prints these options.
   a `git pull`): additionally run, inside the guest,
 
   ```bash
-  bash ~/worktree-vm/install.sh
+  git -C ~/worktree-vm pull --ff-only && bash ~/worktree-vm/install.sh
   ```
+
+  **The pull is not optional.** `install.sh` provisions the clone it is *in*, and
+  only the boot-time provision step ever pulls that clone — so "merge, then run
+  install.sh" re-provisions the version the guest already had. It warns when it
+  notices, but the warning is a net, not the instruction. Note also that
+  `limactl shell` starts in the host directory you ran it from, mapped into the
+  guest, **not** in `$HOME`: use absolute paths, e.g.
+  `limactl shell <instance> -- bash -lc '…'`.
 
   Idempotent, no restart. Always go through `install.sh` (or a full boot) —
   it loads the derived env first; running a single `provision/*.sh` standalone
