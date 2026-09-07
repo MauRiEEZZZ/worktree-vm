@@ -25,7 +25,7 @@ const repo = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 // nothing is created on the real machine.
 function fakeHome() {
   const home = mkdtempSync(join(tmpdir(), 'wt-test-tpl.'));
-  writeFileSync(join(home, '.bashrc'), 'wt-repos() { echo "portal wortell/vidara.portal"; }\n');
+  writeFileSync(join(home, '.bashrc'), 'wt-repos() { echo "demo example-org/demo-repo"; }\n');
   const bin = join(home, 'bin');
   mkdirSync(bin);
   writeFileSync(join(bin, 'gh'), '#!/usr/bin/env bash\necho "Contacts show a rejection reason"\n');
@@ -52,7 +52,7 @@ async function createWithTemplate(template) {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       // a BARE url — no prompt of its own, which is the path that uses the template
-      body: JSON.stringify({ repo: 'portal', prompt: 'https://github.com/wortell/vidara.portal/issues/2452' }),
+      body: JSON.stringify({ repo: 'demo', prompt: 'https://github.com/example-org/demo-repo/issues/2452' }),
     });
     assert.equal(res.status, 202, `session accepted (body: ${await res.text().catch(() => '?')})`);
     // the prompt the session will actually open with is persisted in its metadata
@@ -71,10 +71,10 @@ test('the configured template replaces the default instruction, with placeholder
     'Do not plan this yourself.\\nRead the plan at {meta_dir}/{sid}.plan.md — {repo}, branch {branch}, {kind} {number}.',
   );
   const lines = meta.task.split('\n');
-  assert.match(lines[0], /issue #2452 in wortell\/vidara\.portal/, 'the factual context line survives');
+  assert.match(lines[0], /issue #2452 in example-org\/demo-repo/, 'the factual context line survives');
   assert.equal(lines[2], 'Do not plan this yourself.', 'a literal \\n became a real newline');
-  assert.match(lines[3], /\.wt-meta\/portal--2452-contacts-show-a-rejection-reason\.plan\.md/, '{meta_dir} and {sid} resolved');
-  assert.match(lines[3], /wortell\/vidara\.portal, branch feat\/2452-contacts-show-a-rejection-reason, issue 2452\./, 'the rest resolved');
+  assert.match(lines[3], /\.wt-meta\/demo--2452-contacts-show-a-rejection-reason\.plan\.md/, '{meta_dir} and {sid} resolved');
+  assert.match(lines[3], /example-org\/demo-repo, branch feat\/2452-contacts-show-a-rejection-reason, issue 2452\./, 'the rest resolved');
   assert.doesNotMatch(meta.task, /Plan, implement, run the relevant tests/, 'the built-in default is gone');
   assert.doesNotMatch(meta.task, /\{\w+\}/, 'no placeholder is left unsubstituted');
 });
@@ -86,5 +86,5 @@ test('no template configured keeps the built-in instruction', async () => {
 
 test('an unknown placeholder stays visible instead of becoming empty', async () => {
   const meta = await createWithTemplate('Read {plan_path} for {repo}.');
-  assert.match(meta.task, /Read \{plan_path\} for wortell\/vidara\.portal\./);
+  assert.match(meta.task, /Read \{plan_path\} for example-org\/demo-repo\./);
 });

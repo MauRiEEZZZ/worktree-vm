@@ -3,7 +3,7 @@
 # review. The seeded settings.local.json listed "Read"/"Bash" but no
 # additionalDirectories, so the first look outside its own worktree was refused and
 # an unattended reviewer stopped on "3 consecutive actions were blocked" — measured
-# on portal--7560-escalation-flow-list-rv, dead at a grep into ~/wt/portal/7560-….
+# on a live reviewer session, dead at a grep into the very worktree it was reviewing.
 # Guards: --read-dir lands in additionalDirectories, survives a resume, and
 # wt-review passes the dev worktree without being asked.
 # Real git, real tmux (private socket via the shim), gh + claude stubbed.
