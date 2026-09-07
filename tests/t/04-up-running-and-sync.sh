@@ -6,7 +6,13 @@
 # route that actually applies host config edits to a running guest.
 . "$(dirname "$0")/../lib.sh"
 t_sandbox_home
-t_use_stubs limactl
+# sudo is stubbed for a reason that is not cosmetic: --sync-config really runs
+# `sudo systemctl restart wt-dashboard` in the guest, and the limactl stub really
+# executes that inner script. Without the stub this test restarted the OPERATOR'S
+# dashboard on every local run — the exact action that killed five sessions on
+# 2026-09-01 — and failed outright on a machine where the unit does not exist
+# (systemctl exits 5, "unit not found"), which is what CI had been hiding.
+t_use_stubs limactl sudo
 export STUB_LOG="$T_TMP/stub.log"; : > "$STUB_LOG"
 export FAKE_DISKS='{"name":"t-data","size":1,"dir":"/x","instance":"t"}'
 export FAKE_GUEST_HOME="$T_TMP/guest"; mkdir -p "$FAKE_GUEST_HOME"
@@ -42,7 +48,14 @@ OUT3="$(bash "$T_REPO/platform/lima/up.sh" --sync-config "$T_TMP/cfg.yaml" 2>&1)
 assert_eq "$RC3" "0" "--sync-config on a running guest succeeds"
 if cmp -s "$T_TMP/cfg.yaml" "$FAKE_GUEST_HOME/.config/wt/config.yaml"; then t_pass "guest config byte-identical to host config"; else t_fail "guest config differs"; fi
 assert_contains "$(grep '^PORT=' "$FAKE_GUEST_HOME/.config/wt/dashboard.env")" "7311" "derived env regenerated in the guest"
-assert_contains "$(cat "$STUB_LOG")" "systemctl restart wt-dashboard" "dashboard restart issued"
+# An exact LINE match, not a substring: the limactl stub logs the whole inner
+# script, which mentions the restart either way — so a substring assertion passed
+# even when the restart was never intercepted. Only the sudo stub writes this line.
+if grep -qx 'sudo systemctl restart wt-dashboard' "$STUB_LOG"; then
+  t_pass "dashboard restart issued, and intercepted rather than really run"
+else
+  t_fail "dashboard restart not seen from the sudo stub (real sudo would have restarted the live unit)"
+fi
 
 # --sync-config + STOPPED -> polite refusal
 export FAKE_INSTANCES='{"name":"t","status":"Stopped","dir":"/y"}'

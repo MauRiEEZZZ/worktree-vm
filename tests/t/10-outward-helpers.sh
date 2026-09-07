@@ -13,6 +13,11 @@
 # Real git against a local bare "remote"; gh is a recording stub.
 . "$(dirname "$0")/../lib.sh"
 t_sandbox_home
+# The claude stub is required, not decoration: wt-new checks `command -v claude`
+# before it does anything, so on a machine without the agent — every CI runner —
+# it returns early and this test's subject never exists. It passed locally only
+# because the dev VM happens to have claude installed.
+t_use_stubs claude
 export WT_NO_LAUNCH=1
 
 GH_LOG="$T_TMP/gh.log"
