@@ -21,7 +21,7 @@ sudo corepack enable
 # on an INTERACTIVE tty, so a session (whose stdin is not a tty) already downloads a
 # pinned version silently — verified with an empty COREPACK_HOME, both with and without
 # this variable, exit 0 and no prompt either way. What it buys is that an interactive
-# `ssh lima-vidara-dev` behaves the same as the sessions do, so a human debugging a
+# an interactive `ssh` into the guest behaves the same as the sessions do, so a human debugging a
 # review never sits in front of a question the automation never sees.
 sudo tee /etc/profile.d/corepack.sh >/dev/null <<'EOF'
 export COREPACK_ENABLE_DOWNLOAD_PROMPT=0

@@ -8,6 +8,14 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO"
 
 pass=0; fail=0; skip=0; failed_names=""
+
+# The sanitation grep runs HERE, not only in CI. On 2026-09-07 a change was merged
+# on the strength of a local "17 passed, 0 failed" while this check was red — the
+# suite proves the code works, this proves it may be published, and reporting only
+# the first is how private names reached a public repo.
+echo "== tests/sanitize.sh"
+if bash tests/sanitize.sh; then pass=$((pass + 1)); else fail=$((fail + 1)); failed_names="$failed_names tests/sanitize.sh"; fi
+
 for t in tests/t/*.sh; do
   echo "== $t"
   bash "$t"; rc=$?

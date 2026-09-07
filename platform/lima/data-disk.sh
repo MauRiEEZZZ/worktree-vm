@@ -24,7 +24,7 @@
 #                          them means the app does not start at all. Worse, the password
 #                          was baked into a persisted SQL Server data volume, so
 #                          regenerating it is not a fix either (measured 2026-09-03 on
-#                          vidara.portal).
+#                          a real Aspire app with a persisted SQL Server volume).
 #   ~/.config/wt           the wt config + derived env
 #   ~/.wt-meta             per-session markers (agent/flags/model/priority)
 #   ~/.cache/node          corepack's package-manager downloads (pnpm/yarn per repo
