@@ -39,6 +39,12 @@
 #                          worktree re-prompts for trust after a rebuild, which
 #                          hangs exactly the unattended (--auto) sessions
 #
+# NOT here on purpose: ~/.gitconfig. It holds the gh credential helper, and losing
+# it after a rebuild is how the first push silently failed on 2026-09-15 — but the
+# fix is to RE-DERIVE it, not to persist it: provision/30-gh.sh runs
+# `gh auth setup-git` from gh's own auth, which does live on this disk. Persisting
+# the file instead would freeze a helper path that must match the installed gh.
+#
 # Env:
 #   WT_DATA_MOUNT  (required) the disk's mount point, /mnt/lima-<disk-name>
 #   WT_DATA_LINKS  dirs (relative to ~) to move to the disk and symlink back
