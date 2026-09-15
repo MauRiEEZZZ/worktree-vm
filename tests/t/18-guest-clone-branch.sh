@@ -43,4 +43,25 @@ else
   assert_not_contains "$OUT" "the guest will clone" "no note when the checkout is on the default branch"
   t_pass "nothing to deviate from (checkout is on $DEF_BR)"
 fi
+# ---- and it must survive a checkout with neither ref ---------------------------
+# A CI checkout has no refs/remotes/origin/HEAD and leaves a detached HEAD. Under
+# `set -e` a failing command substitution in an assignment kills the script, so the
+# first version of this feature took up.sh down before it rendered anything —
+# green on a dev VM, red on every runner.
+# up.sh derives REPO_DIR from its OWN path, so the fixture has to be a real copy of
+# the repo — running the checked-out up.sh from another cwd would just re-test the
+# checkout the suite already runs in, and the assertion could never fail.
+mkdir -p "$T_TMP/bare-head"
+cp -R "$T_REPO/platform" "$T_REPO/lib" "$T_TMP/bare-head/"
+git init -q -b main "$T_TMP/bare-head"
+( cd "$T_TMP/bare-head" && git config user.email t@t && git config user.name t \
+  && git add -A && git commit -qm one && git checkout -q --detach )
+assert_eq "$(git -C "$T_TMP/bare-head" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null || true)" \
+  "" "the fixture has no origin/HEAD (half the CI condition)"
+assert_eq "$(git -C "$T_TMP/bare-head" symbolic-ref --quiet --short HEAD 2>/dev/null || true)" \
+  "" "and a detached HEAD (the other half)"
+OUT2="$(bash "$T_TMP/bare-head/platform/lima/up.sh" "$T_TMP/cfg.yaml" 2>&1)"; RC2=$?
+assert_eq "$RC2" "0" "up.sh still renders when origin/HEAD is missing and HEAD is detached"
+assert_contains "$OUT2" "rendered" "and really got as far as rendering"
+
 t_end
