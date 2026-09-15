@@ -214,7 +214,7 @@ REPO_BRANCH="${REPO_BRANCH#origin/}"
 [ -n "$REPO_BRANCH" ] || REPO_BRANCH=main
 REPO_HEAD="$(git -C "$REPO_DIR" symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
 if [ -n "$REPO_HEAD" ] && [ "$REPO_HEAD" != "$REPO_BRANCH" ]; then
-  echo "NOTE: $REPO_DIR is on '$REPO_HEAD'; the guest will clone '$REPO_BRANCH'." >&2
+  echo "NOTE: $REPO_DIR is on '$REPO_HEAD'; the guest will clone BRANCH '$REPO_BRANCH'." >&2
   echo "      To run '$REPO_HEAD' in the guest instead, after provisioning:" >&2
   echo "        limactl shell $INSTANCE -- bash -lc 'git -C ~/worktree-vm checkout $REPO_HEAD && bash ~/worktree-vm/install.sh'" >&2
 fi
