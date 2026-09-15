@@ -65,8 +65,11 @@ provision:
       SRC="@REPO_HOST_DIR@"
       DST="$HOME/worktree-vm"
       if [ ! -d "$DST/.git" ]; then
-        if [ -d "$SRC/.git" ]; then git clone "$SRC" "$DST"
-        else git clone "@REPO_URL@" "$DST"; fi
+        # --branch: `git clone` otherwise takes the SOURCE's current branch, so a
+        # rebuild while the host checkout sits on a feature branch would hand the VM
+        # that branch without saying a word. up.sh prints a note when they differ.
+        if [ -d "$SRC/.git" ]; then git clone --branch "@REPO_BRANCH@" "$SRC" "$DST"
+        else git clone --branch "@REPO_BRANCH@" "@REPO_URL@" "$DST"; fi
       else
         git -C "$DST" pull --ff-only || true
       fi

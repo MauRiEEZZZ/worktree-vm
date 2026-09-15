@@ -200,6 +200,20 @@ case "$REPO_DIR" in
   *) echo "NOTE: $REPO_DIR is outside \$HOME — the guest will clone from GitHub instead of this checkout" >&2 ;;
 esac
 REPO_URL="https://github.com/MauRiEEZZZ/worktree-vm.git"
+# The guest clones THIS checkout, and `git clone` takes the source's current branch.
+# So a rebuild while you happen to be sitting on a feature branch silently gives the
+# VM that branch — and every later boot keeps ff-pulling it. Pin the default branch
+# instead, and say so when the checkout is somewhere else, so deviating stays a
+# decision rather than an accident.
+REPO_BRANCH="$(git -C "$REPO_DIR" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null)"
+REPO_BRANCH="${REPO_BRANCH#origin/}"
+[ -n "$REPO_BRANCH" ] || REPO_BRANCH=main
+REPO_HEAD="$(git -C "$REPO_DIR" symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
+if [ -n "$REPO_HEAD" ] && [ "$REPO_HEAD" != "$REPO_BRANCH" ]; then
+  echo "NOTE: $REPO_DIR is on '$REPO_HEAD'; the guest will clone '$REPO_BRANCH'." >&2
+  echo "      To run '$REPO_HEAD' in the guest instead, after provisioning:" >&2
+  echo "        limactl shell $INSTANCE -- bash -lc 'git -C ~/worktree-vm checkout $REPO_HEAD && bash ~/worktree-vm/install.sh'" >&2
+fi
 HOST_CONFIG="$CONFIG"
 # Embed the resolved config VERBATIM into the seeding provision step (indented
 # to the YAML block-scalar level), so the guest always receives exactly the
@@ -220,6 +234,7 @@ TPL="${TPL//@PORT_FORWARDS@/$PORT_FORWARDS}"
 TPL="${TPL//@PROVISION_DATA_DISK@/$PROVISION_DATA_DISK}"
 TPL="${TPL//@REPO_HOST_DIR@/$REPO_DIR}"
 TPL="${TPL//@REPO_URL@/$REPO_URL}"
+TPL="${TPL//@REPO_BRANCH@/$REPO_BRANCH}"
 TPL="${TPL//@CONFIG_CONTENT@/$CONFIG_CONTENT}"
 TPL="${TPL//@HOST_CONFIG@/$HOST_CONFIG}"
 TPL="${TPL//@INSTANCE@/$INSTANCE}"
