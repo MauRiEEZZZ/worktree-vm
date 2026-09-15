@@ -332,7 +332,17 @@ wt-push() {
     git -C "$dir" ls-files --others --exclude-standard | head -5 | sed 's/^/  /'
   fi
   echo "pushing $key/$name: $br -> origin"
-  git -C "$dir" push --set-upstream origin "$br"
+  # Say what HAPPENED, not what was about to happen. The announcement line used to
+  # be the last thing printed on a failed push, so a push that never reached GitHub
+  # read exactly like one that did — measured 2026-09-15, right after a rebuild: the
+  # branch was not on origin and only a 404 from `gh api` gave it away.
+  if ! git -C "$dir" push --set-upstream origin "$br"; then
+    echo "push FAILED — '$br' is NOT on origin" >&2
+    echo "  if that was an auth error and the VM was just rebuilt: the git credential" >&2
+    echo "  helper is not on the data disk, so run 'gh auth setup-git' once." >&2
+    return 1
+  fi
+  echo "pushed: $br -> origin at $(git -C "$dir" rev-parse --short HEAD)"
 }
 
 # wt-pr-draft [<repo> <name>] [--title <t>] [--body-file <f>] : open the session's
@@ -357,9 +367,21 @@ wt-pr-draft() {
   local br; br="$(_wt_pushable "$dir")" || return 1
   # The branch must be on the remote AND match it: a PR opened from a stale remote
   # branch shows a diff nobody reviewed.
-  local remote_sha local_sha
-  remote_sha="$(git -C "$dir" ls-remote --exit-code origin "refs/heads/$br" 2>/dev/null | cut -f1)" \
-    || { echo "branch '$br' is not on origin yet — run: wt-push $key $name"; return 1; }
+  # Three different failures, three different answers. The old form piped ls-remote
+  # into cut and tested the PIPELINE's status — which is cut's, always 0 — so an
+  # unreachable origin fell through with an empty sha and reported the branch as
+  # stale: "origin/x is not at your HEAD (abc123def456 vs )". Measured 2026-09-15:
+  # the real cause was a missing git credential helper after a rebuild, and this
+  # message sent the reader looking for a push that had never been possible.
+  local remote_sha local_sha lsr
+  if ! lsr="$(git -C "$dir" ls-remote origin "refs/heads/$br" 2>&1)"; then
+    echo "cannot reach origin: $lsr" >&2
+    echo "  after a VM rebuild this is usually the git credential helper, which is not" >&2
+    echo "  on the data disk: run 'gh auth setup-git' once." >&2
+    return 1
+  fi
+  remote_sha="$(printf '%s\n' "$lsr" | cut -f1)"
+  [ -n "$remote_sha" ] || { echo "branch '$br' is not on origin yet — run: wt-push $key $name"; return 1; }
   local_sha="$(git -C "$dir" rev-parse HEAD)"
   [ "$remote_sha" = "$local_sha" ] || { echo "origin/$br is not at your HEAD (${local_sha:0:12} vs ${remote_sha:0:12}) — run: wt-push $key $name"; return 1; }
   local existing; existing="$(gh pr list --repo "$repo" --head "$br" --state open --json number -q '.[0].number' 2>/dev/null)"
