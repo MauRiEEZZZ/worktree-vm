@@ -205,7 +205,11 @@ REPO_URL="https://github.com/MauRiEEZZZ/worktree-vm.git"
 # VM that branch — and every later boot keeps ff-pulling it. Pin the default branch
 # instead, and say so when the checkout is somewhere else, so deviating stays a
 # decision rather than an accident.
-REPO_BRANCH="$(git -C "$REPO_DIR" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null)"
+# `|| true` on both: under `set -e` a failing command substitution in an assignment
+# kills the script, and neither ref is guaranteed. A CI checkout has no
+# refs/remotes/origin/HEAD and leaves a detached HEAD — so without this, up.sh
+# exited 1 before it rendered anything.
+REPO_BRANCH="$(git -C "$REPO_DIR" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null || true)"
 REPO_BRANCH="${REPO_BRANCH#origin/}"
 [ -n "$REPO_BRANCH" ] || REPO_BRANCH=main
 REPO_HEAD="$(git -C "$REPO_DIR" symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
