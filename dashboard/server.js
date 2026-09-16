@@ -479,6 +479,10 @@ async function worktreeForBranch(key, branch) {
   }
   return null;
 }
+// Does any worktree hold this branch? The two callers that only need the yes/no keep
+// reading as the question they are asking. Renaming this away on 2026-09-03 and missing
+// both of them is what killed the watcher for thirteen days.
+async function branchCheckedOut(key, branch) { return !!(await worktreeForBranch(key, branch)); }
 // Session id of a worktree at ~/wt/<repo>/<name>, or null when it lives elsewhere.
 function sidOfWorktree(dir) {
   const rel = path.relative(WT_TREES, dir).split(path.sep);
