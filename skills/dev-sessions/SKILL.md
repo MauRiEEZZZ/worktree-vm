@@ -203,7 +203,7 @@ configured): every few minutes it checks `gh search prs --review-requested=@me`
 scoped to that owner and, for each PR in a configured repo, auto-starts **one**
 review session `review-<n>` (`--auto --deny-post` + Remote Control). That session
 reviews the PR itself AND gets an independent second opinion from **Codex via
-the Codex MCP server** (`mcp__codex__*` tools), consolidates both, and — per
+`codex review`** (a first-class subcommand; Codex no longer serves MCP), consolidates both, and — per
 policy — **drafts but asks before posting** anything to GitHub. It's idempotent
 (one session per PR). Service env toggles (in the dashboard env file):
 `PR_REVIEW_WATCH=0` off, `PR_REVIEW_DRYRUN=1` log-only, `PR_REVIEW_POLL_MS`,
