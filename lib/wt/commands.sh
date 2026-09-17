@@ -255,13 +255,26 @@ wt-review() {
   local devhead base; devhead="$(git -C "$devdir" rev-parse HEAD)"
   base="$(git -C "$devdir" merge-base HEAD "origin/$defbr" 2>/dev/null)"; [ -z "$base" ] && base="origin/$defbr"
   # scope -> which diff the reviewer inspects (read-only, against the LIVE dev worktree $devdir)
-  local diffcmd extra=""
+  local diffcmd extra="" codexcmd
   case "$scope" in
     committed) diffcmd="git -C $devdir diff $base...HEAD" ;;
     working)   diffcmd="git -C $devdir diff $base" ;;
     all)       diffcmd="git -C $devdir diff $base"; extra=" Additionally, list the untracked files with 'git -C $devdir ls-files --others --exclude-standard' and read those too." ;;
   esac
-  local task="You are an INDEPENDENT reviewer. Review the work-in-progress of dev session wt/$key/$name. The live dev worktree is at $devdir; the base is commit $base (merge-base with origin/$defbr), dev HEAD is $devhead. Scope=$scope. Inspect the changes read-only with: $diffcmd .$extra Read surrounding code (in this review worktree or via $devdir) for context where needed, but CHANGE nothing in $devdir. ALSO get an independent second opinion from Codex via the codex MCP server (the mcp__codex__* tools) on the same diff/scope; if the MCP tool fails, fall back to 'codex exec'. Consolidate both opinions into concrete findings (correctness/bugs, security, tests, edge cases, style) with file:line where possible, plus a short overall conclusion. REPORT ONLY: post NOTHING to GitHub and change no code -- this is pre-PR work-in-progress; report your findings here (the user reads along via Remote Control)."
+  # The second opinion is `codex review`, a first-class subcommand — not an MCP
+  # server (codex stopped serving MCP; the old registration failed to connect and
+  # silently degraded every review to cold `codex exec` starts) and not `codex exec`
+  # (which re-reads the diff from scratch each call).
+  # The working DIRECTORY carries the scope, exactly as `git -C` does above: this
+  # review worktree holds the committed state (it was created --from the dev HEAD),
+  # while the dev worktree also holds the uncommitted work.
+  # read-only sandbox: the reviewer must not be able to touch the worktree it reviews,
+  # which until now rested on the task text asking it not to.
+  case "$scope" in
+    committed) codexcmd="codex review -c sandbox_mode=\"read-only\" --base origin/$defbr" ;;
+    *)         codexcmd="(cd $devdir && codex review -c sandbox_mode=\"read-only\" --base origin/$defbr)" ;;
+  esac
+  local task="You are an INDEPENDENT reviewer. Review the work-in-progress of dev session wt/$key/$name. The live dev worktree is at $devdir; the base is commit $base (merge-base with origin/$defbr), dev HEAD is $devhead. Scope=$scope. Inspect the changes read-only with: $diffcmd .$extra Read surrounding code (in this review worktree or via $devdir) for context where needed, but CHANGE nothing in $devdir. ALSO get an independent second opinion from Codex on the same diff/scope by running: $codexcmd . That is a first-class review subcommand; do NOT look for codex MCP tools (codex no longer serves MCP) and do not fall back to 'codex exec'. If it fails, say so in your report rather than silently reviewing alone. Consolidate both opinions into concrete findings (correctness/bugs, security, tests, edge cases, style) with file:line where possible, plus a short overall conclusion. REPORT ONLY: post NOTHING to GitHub and change no code -- this is pre-PR work-in-progress; report your findings here (the user reads along via Remote Control)."
   local b64; b64="$(printf '%s' "$task" | base64 | tr -d '\n')"
   echo "review session for wt/$key/$name (scope $scope, base ${base:0:12}${model:+, model $model}) -> wt/$key/$rname"
   # --read-dir $devdir: the reviewer's whole job is to read a worktree that is not

@@ -25,9 +25,10 @@ _wt_seed_perms() {  # $1=dir $2=auto(0/1) $3=denypost(0/1) $4=read dirs (space-s
   # deny-post uses the ASK tier (not deny): posting to GitHub prompts for confirmation
   # and runs after you approve (deny is absolute and would block even a you-approved
   # post). Precedence is deny > ask > allow, so ask overrides the broad Bash allow.
-  # mcp__codex(__*) lets the Codex second-opinion run without a prompt.
+  # No mcp__codex entries: codex stopped serving MCP, so those granted tools that do
+  # not exist. The second opinion is `codex review`, which the broad Bash allow covers.
   local allow="" ask=""
-  [ "$auto" = 1 ] && allow='"Bash","Read","Edit","Write","Glob","Grep","WebFetch","mcp__codex","mcp__codex__*"'
+  [ "$auto" = 1 ] && allow='"Bash","Read","Edit","Write","Glob","Grep","WebFetch"'
   # The outward helpers belong to whoever is talking to the user: a session running
   # them would push or open a PR on a RELAYED "yes", which is not the user's own.
   # ask, not deny, so a session someone is actually driving can still do it after an

@@ -22,17 +22,28 @@ sudo npm rm -g @anthropic-ai/claude-code @openai/codex >/dev/null 2>&1 || true
 sudo ln -sf "$HOME/.npm-global/bin/claude" /usr/local/bin/claude
 sudo ln -sf "$HOME/.npm-global/bin/codex"  /usr/local/bin/codex
 
-# Register Codex as an MCP server in Claude Code (user scope, ~/.claude.json) so a
-# Claude session can consult Codex for a second-opinion review. Uses the same
-# `codex login` auth. Idempotent.
-claude mcp list 2>/dev/null | grep -q '^codex' \
-  || claude mcp add --transport stdio --scope user codex -- codex mcp-server \
-  || echo "WARN: could not add codex MCP server"
-# Allow the codex MCP tools without a per-call prompt in EVERY session (not just
-# --auto ones, which get it via .claude/settings.local.json). Idempotent patch of
-# the user settings.
-node -e 'const fs=require("fs"),os=require("os");const f=os.homedir()+"/.claude/settings.json";let j={};try{j=JSON.parse(fs.readFileSync(f,"utf8"))}catch{}; j.permissions=j.permissions||{}; j.permissions.allow=j.permissions.allow||[]; for(const r of ["mcp__codex","mcp__codex__*"]) if(!j.permissions.allow.includes(r)) j.permissions.allow.push(r); fs.mkdirSync(require("path").dirname(f),{recursive:true}); fs.writeFileSync(f,JSON.stringify(j,null,2));' 2>/dev/null \
-  || echo "WARN: could not add codex MCP allow to user settings"
+# The second opinion comes from `codex review`, NOT from an MCP server.
+#
+# Codex used to expose itself as one (`codex mcp-server`) and this step registered
+# it. That subcommand is gone — codex 0.154.0 has `mcp` for *consuming* external
+# servers and nothing that serves. The registration survived the removal, so every
+# session that asked for the second opinion got CONNECTION_CLOSED, fell back to
+# `codex exec`, and paid a cold CLI start per call. It still produced a review, so
+# nobody noticed: measured 2026-09-17 on a single review session, 42 `codex exec`
+# calls against 7 failed MCP attempts.
+#
+# Remove a stale registration from an earlier provision, and verify the command we
+# now depend on actually exists instead of assuming it does.
+if claude mcp list 2>/dev/null | grep -q '^codex:'; then
+  claude mcp remove --scope user codex >/dev/null 2>&1 \
+    && echo "removed the stale codex MCP registration (codex no longer serves MCP)"
+fi
+if codex review --help >/dev/null 2>&1; then
+  echo "codex review: available (the second-opinion path)"
+else
+  echo "WARN: 'codex review' is not available in $(codex --version 2>/dev/null || echo 'codex') —" >&2
+  echo "      the reviewer's second opinion will not work. Check the CLI's subcommands." >&2
+fi
 # Run Codex UNATTENDED as the review second-opinion: no per-command Accept/Decline
 # prompt, but sandboxed to the worktree (workspace-write) with network for restores.
 # Idempotent TOML merge (top-level keys must precede the first [table], so prepend).

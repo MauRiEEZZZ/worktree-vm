@@ -488,7 +488,7 @@ function sidOfWorktree(dir) {
   const rel = path.relative(WT_TREES, dir).split(path.sep);
   return (rel.length === 2 && rel[0] && !rel[0].startsWith('..')) ? sidOf(rel[0], rel[1]) : null;
 }
-function reviewPrompt(pr, repoFull, since) {
+function reviewPrompt(pr, repoFull, since, baseRef) {
   return [
     `You have been asked to review GitHub pull request #${pr.number} in ${repoFull}: "${pr.title}".`,
     pr.url,
@@ -501,7 +501,11 @@ function reviewPrompt(pr, repoFull, since) {
     `You are on the PR branch in this worktree. Do a thorough, independent review:`,
     `- Read the PR: gh pr view ${pr.number} --repo ${repoFull} --comments  and  gh pr diff ${pr.number} --repo ${repoFull}`,
     `- Judge correctness, tests, scope and the repo's conventions.`,
-    `Also get an INDEPENDENT second opinion from Codex via the codex MCP server (the mcp__codex__* tools): have Codex review the same PR/diff. If the MCP tool fails, fall back to 'codex exec "<review task>"' via bash.`,
+    // `codex review` is a first-class subcommand. Codex stopped serving MCP, and the
+    // stale registration meant every review fell back to cold `codex exec` starts —
+    // 42 of them on one session, measured 2026-09-17 — while still producing a
+    // review, so the degradation was invisible.
+    `Also get an INDEPENDENT second opinion from Codex on the same diff, by running: codex review -c sandbox_mode="read-only" --base origin/${baseRef || 'HEAD'} . Do NOT look for codex MCP tools (codex no longer serves MCP) and do not fall back to 'codex exec'. If it fails, say so in your report rather than silently reviewing alone.`,
     `Compare your findings with Codex's (where do you agree/disagree) and produce ONE consolidated list of findings, each with an exact file:line.`,
     `ANCHOR the review as a PENDING pull-request review with INLINE, line-anchored comments (not as a loose issue comment):`,
     `- Build JSON and run: gh api repos/${repoFull}/pulls/${pr.number}/reviews --input <file> . OMIT "event" -> that creates a PENDING review (a draft; only you see it until you submit it in the GitHub UI).`,
@@ -532,10 +536,11 @@ async function pollReviewRequests() {
       // this very search and was skipped forever, so round two never started
       // (measured 2026-09-03; two PRs sat waiting).
       const { out: hj } = await gh(['pr', 'view', String(pr.number), '--repo', pr.repository.nameWithOwner,
-        '--json', 'headRefName,headRefOid']);
+        '--json', 'headRefName,headRefOid,baseRefName']);
       let head = {}; try { head = JSON.parse(hj || '{}'); } catch {}
       const headRef = (head.headRefName || '').trim();
       const headSha = (head.headRefOid || '').trim();
+      const baseRef = (head.baseRefName || '').trim();   // what Codex reviews against
       const prev = seen[ledgerKey];
       // No head SHA (a gh hiccup) -> fall back to the old behaviour and skip a PR we
       // have already handled, rather than guessing that it moved and spawning twice.
@@ -579,7 +584,7 @@ async function pollReviewRequests() {
       if (PR_REVIEW_DRYRUN) { console.log(`[pr-review] DRYRUN would start ${sidOf(key, name)} for ${ledgerKey} — "${pr.title}"${since ? ` (round ${round}, since ${since.slice(0, 8)})` : ''}`); continue; }
       // model: the watcher's own key; 'default' = explicitly the account default,
       // so an empty key never lets a watcher review inherit the dev default_model.
-      const r = await createSession({ repo: key, agent: 'claude', name, auto: true, denyPost: true, model: PR_REVIEW_MODEL || 'default', prompt: reviewPrompt(pr, repos[key], since) });
+      const r = await createSession({ repo: key, agent: 'claude', name, auto: true, denyPost: true, model: PR_REVIEW_MODEL || 'default', prompt: reviewPrompt(pr, repos[key], since, baseRef) });
       if (r && !r.error) { seen[ledgerKey] = { sid: r.id, headSha, round, at: Date.now() }; writeSeen(seen); console.log(`[pr-review] started ${r.id} for ${ledgerKey} (round ${round})`); }
       // NOTE: no headSha on the error path. Recording it would mark the PR "handled at
       // this commit" and the round would be lost until the author pushed again — a
