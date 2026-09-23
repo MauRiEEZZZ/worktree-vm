@@ -453,16 +453,30 @@ function clonePathFor(key) {
 }
 // PRs that ALREADY have a dev-session (from session metadata: sourceRepo#sourceNumber) — so
 // we never spawn a duplicate review session for a PR you're already working on.
+// Returns ledgerKey -> sid, not just membership: on a repeat round the session that
+// already owns the PR is the one that has to hear about the new commits, and telling
+// it needs its id.
 function existingSessionPrs() {
-  const set = new Set();
+  const byPr = new Map();
   try {
     for (const f of fs.readdirSync(META_DIR)) {
       if (!f.endsWith('.json')) continue;
-      const m = readMeta(f.replace(/\.json$/, ''));
-      if (m && m.sourceRepo && m.sourceNumber) set.add(`${String(m.sourceRepo).toLowerCase()}#${m.sourceNumber}`);
+      const sid = f.replace(/\.json$/, '');
+      const m = readMeta(sid);
+      if (m && m.sourceRepo && m.sourceNumber) byPr.set(`${String(m.sourceRepo).toLowerCase()}#${m.sourceNumber}`, sid);
     }
   } catch {}
-  return set;
+  return byPr;
+}
+// Tell a session that its PR has moved. Same marker a session writes for itself with
+// wt-handoff, so it surfaces in the same place: the top of the dashboard.
+function handOff(sid, text) {
+  if (!sid) return false;
+  try {
+    fs.mkdirSync(WT_META, { recursive: true });
+    fs.writeFileSync(path.join(WT_META, sid + '.handoff'), text + '\n');
+    return true;
+  } catch { return false; }
 }
 // A git branch can be checked out in only one worktree; if the PR's head branch is already
 // out, a review worktree can't be created. Returns WHICH worktree has it (or null): on a
@@ -548,10 +562,21 @@ async function pollReviewRequests() {
       const round = prev ? (prev.round || 1) + 1 : 1;
       const since = prev && prev.headSha && prev.headSha !== headSha ? prev.headSha : null;
       if (since) console.log(`[pr-review] ${ledgerKey} moved ${since.slice(0, 8)} -> ${headSha.slice(0, 8)}, round ${round}`);
-      // Dedup: don't duplicate a PR you already have a session for.
-      if (existing.has(ledgerKey)) {
+      // Dedup: don't duplicate a PR you already have a session for — but a repeat round
+      // still has to reach somebody. Detecting new commits and then dropping them here
+      // is the same silent shape as the one-shot bug this ledger was built to fix:
+      // measured 2026-09-22 on a live PR: the ledger held `round: 3,
+      // skipped: session-exists` and nothing told the session holding it.
+      const ownerSid = existing.get(ledgerKey);
+      if (ownerSid) {
         seen[ledgerKey] = { ...prev, skipped: 'session-exists', headSha, round, at: Date.now() }; writeSeen(seen);
-        console.log(`[pr-review] skip ${ledgerKey} (session already exists)`); continue;
+        if (since) {
+          handOff(ownerSid, `${ledgerKey} has new commits since ${since.slice(0, 8)} — review round ${round}`);
+          console.log(`[pr-review] ${ledgerKey}: new commits since ${since.slice(0, 8)} — handed to ${ownerSid} (round ${round})`);
+        } else {
+          console.log(`[pr-review] skip ${ledgerKey} (session already exists)`);
+        }
+        continue;
       }
       // Branch guard: a PR branch already checked out can't get a second worktree.
       // On a repeat round that is the NORMAL case — the previous round's worktree is
@@ -563,13 +588,7 @@ async function pollReviewRequests() {
       if (holder) {
         seen[ledgerKey] = { ...prev, skipped: 'branch-checked-out', headSha, round, at: Date.now() }; writeSeen(seen);
         const hsid = since ? sidOfWorktree(holder) : null;
-        if (hsid) {
-          try {
-            fs.mkdirSync(WT_META, { recursive: true });
-            fs.writeFileSync(path.join(WT_META, hsid + '.handoff'),
-              `${ledgerKey} has new commits since ${since.slice(0, 8)} — review round ${round}\n`);
-          } catch {}
-        }
+        if (hsid) handOff(hsid, `${ledgerKey} has new commits since ${since.slice(0, 8)} — review round ${round}`);
         console.log(since
           ? `[pr-review] ${ledgerKey}: new commits since ${since.slice(0, 8)} — handed to ${hsid || holder} (round ${round})`
           : `[pr-review] skip ${ledgerKey} (branch ${headRef} already checked out in ${holder})`);

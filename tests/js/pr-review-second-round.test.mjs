@@ -10,7 +10,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, chmodSync, rmSync, readFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, chmodSync, rmSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -129,6 +129,51 @@ test('when the branch is still checked out, the round is handed to the session t
     const marker = readFileSync(join(home, '.wt-meta', 'demo--review-42.handoff'), 'utf8');
     assert.match(marker, /example-org\/demo-repo#42 has new commits since aaaaaaaa — review round 2/,
       'and that session is flagged on the dashboard instead of the news being lost in a log');
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('a round for a PR that already has a session is handed to that session', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'wt-test-round2d.'));
+  mkdirSync(join(home, 'bin'));
+  writeFileSync(join(home, '.bashrc'), 'wt-repos() { echo "demo example-org/demo-repo"; }\n');
+
+  // A dashboard-created session carries sourceRepo/sourceNumber in its metadata, which
+  // is how the watcher knows the PR is already somebody's. That path used to record the
+  // new round and say nothing — the shape this ledger exists to prevent.
+  mkdirSync(join(home, '.wt-sessions'), { recursive: true });
+  writeFileSync(join(home, '.wt-sessions', 'demo--feat-x.json'), JSON.stringify({
+    repo: 'demo', name: 'feat-x', branch: 'feat/x',
+    sourceRepo: 'example-org/demo-repo', sourceNumber: 42, createdAt: Date.now(),
+  }));
+
+  try {
+    recordRound(home, 'demo--review-42', A, 1);
+    const out = await poll(home, B);
+    assert.doesNotMatch(out, /DRYRUN would start/, 'no second session is created for a PR someone owns');
+    assert.match(out, /handed to demo--feat-x \(round 2\)/, 'the log names who got it');
+    const marker = readFileSync(join(home, '.wt-meta', 'demo--feat-x.handoff'), 'utf8');
+    assert.match(marker, /example-org\/demo-repo#42 has new commits since aaaaaaaa — review round 2/,
+      'and that session is flagged on the dashboard rather than the round being dropped');
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('an unchanged PR that already has a session stays quiet', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'wt-test-round2e.'));
+  mkdirSync(join(home, 'bin'));
+  writeFileSync(join(home, '.bashrc'), 'wt-repos() { echo "demo example-org/demo-repo"; }\n');
+  mkdirSync(join(home, '.wt-sessions'), { recursive: true });
+  writeFileSync(join(home, '.wt-sessions', 'demo--feat-x.json'), JSON.stringify({
+    repo: 'demo', name: 'feat-x', sourceRepo: 'example-org/demo-repo', sourceNumber: 42,
+  }));
+  try {
+    recordRound(home, 'demo--review-42', A, 1);
+    await poll(home, A);
+    assert.equal(existsSync(join(home, '.wt-meta', 'demo--feat-x.handoff')), false,
+      'no marker when nothing moved — the dashboard must not fill with noise');
   } finally {
     rmSync(home, { recursive: true, force: true });
   }
