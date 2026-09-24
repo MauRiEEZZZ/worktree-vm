@@ -127,7 +127,11 @@ if [ "$SYNC_CONFIG" = 1 ]; then
   echo "      if any session is missing, check that the unit has it: systemctl show wt-dashboard -p KillMode"
   echo "Provisioning-level changes (stacks:, agents) additionally need one idempotent run in the guest (no restart):"
   echo "  limactl shell $INSTANCE -- bash -lc 'git -C ~/worktree-vm pull --ff-only && bash ~/worktree-vm/install.sh'"
-  echo "Platform facts (cpus/memory/ports/disks) still require: limactl delete $INSTANCE, then up.sh (work survives on the data disk)."
+  echo "cpus/memory/disk: limactl stop $INSTANCE && limactl edit --memory N --cpus N $INSTANCE && limactl start $INSTANCE"
+  echo "      (edits the instance's stored config in place — the root disk, its docker images and anything"
+  echo "       installed outside the data disk all survive; boot re-runs provisioning. Mirror the change in"
+  echo "       your config so the next render agrees.)"
+  echo "Ports and added disks still require: limactl delete $INSTANCE, then up.sh (work survives on the data disk)."
   exit 0
 fi
 
@@ -147,8 +151,12 @@ if [ "$INSTANCE_STATUS" = "Running" ]; then
   echo "       so the paths must be absolute.)"
   echo "  full reboot + provision:  limactl stop $INSTANCE && limactl start $INSTANCE"
   echo "      (WARNING: restarts the VM — every running tmux/agent session is killed)"
-  echo "  platform facts (cpus/memory/ports/disks): limactl delete $INSTANCE, then up.sh"
-  echo "      (work, sessions and auth survive on the data disk)"
+  echo "  cpus/memory/disk:         limactl stop $INSTANCE && limactl edit --memory N --cpus N $INSTANCE && limactl start $INSTANCE"
+  echo "      (edits the stored config in place and keeps the root disk — its docker images and anything"
+  echo "       installed outside the data disk survive a resize. Boot re-runs provisioning. Restarts the VM,"
+  echo "       so running sessions are killed. Mirror the change in your config so the next render agrees.)"
+  echo "  ports / added disks:      limactl delete $INSTANCE, then up.sh"
+  echo "      (the only changes that really need the template path; work, sessions and auth survive on the data disk)"
   exit 1
 fi
 
