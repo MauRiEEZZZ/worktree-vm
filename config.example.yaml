@@ -163,3 +163,16 @@ lima:
   # under your home; ~/.claude.json is persisted by copy). Empty = no persistence.
   data_disk: worktree-data
   data_disk_size: 60GiB
+  # Host paths mounted read-only into the guest, each at the same path. Default
+  # (key absent): ["~"], your whole home. `none` (or []) = no host mounts.
+  # WHY NARROW IT: anything in the guest that walks `/` (a `find /`, an indexer,
+  # a backup or scan tool) reaches the protected macOS folders under your home
+  # through this mount; macOS then raises a privacy prompt on the host and
+  # blocks ALL file access through the mount until someone answers it — every
+  # guest process touching the mount hangs meanwhile. Mount only what the guest
+  # needs: the worktree-vm checkout (the guest clones from it; otherwise from
+  # GitHub) and any host path the config points the guest at (hooks.dir,
+  # secrets.source). up.sh warns at render time about anything left uncovered.
+  # host_mounts:
+  #   - ~/src/worktree-vm
+  #   - ~/src/my-overlay

@@ -31,9 +31,7 @@ images:
     arch: "@IMAGE_ARCH@"
 
 mountType: "virtiofs"
-mounts:
-  - location: "~"
-    writable: false   # read-only: copy things out if needed; real work lives on the VM disk
+@HOST_MOUNTS@
 
 @ADDITIONAL_DISKS@
 ssh:
