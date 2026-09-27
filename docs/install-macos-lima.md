@@ -17,10 +17,18 @@ git clone https://github.com/MauRiEEZZZ/worktree-vm ~/worktree-vm
 cd ~/worktree-vm
 ```
 
-Keep the clone somewhere under `~`: the VM mounts your home read-only, and the
-guest clones the repo from that checkout (so the guest runs exactly the ref you
-have checked out). A clone outside `~` still works — the guest then falls back
-to cloning from GitHub.
+Keep the clone under one of the host paths the VM mounts: by default that is
+your whole home (`~`, read-only), narrowed with `lima.host_mounts` in the config
+(see below). The guest clones the repo from that checkout, so it runs exactly
+the ref you have checked out. A clone outside every mounted path still works —
+the guest then falls back to cloning from GitHub, and `up.sh` warns about it.
+
+Why you might narrow `lima.host_mounts`: a tool in the guest that walks `/`
+reaches the protected macOS folders under your home through the mount, and
+macOS then blocks all file access through the mount until a privacy prompt on
+the host is answered. Mounting only the checkout (plus any host path your config
+points the guest at, such as `hooks.dir` or `secrets.source`) avoids that; see
+`config.example.yaml`.
 
 ## 2. Configure
 
