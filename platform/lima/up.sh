@@ -17,7 +17,7 @@
 #  - --sync-config: push the host config into a RUNNING guest, regenerate the
 #    derived env and restart the dashboard — the way to apply config edits
 #    without a VM restart. Provisioning-level changes (stacks) additionally
-#    need install.sh in the guest; platform facts (cpus/memory/ports/disks)
+#    need install.sh in the guest; platform facts (cpus/memory/ports/disks/mounts)
 #    always need `limactl delete` + up.sh (work survives on the data disk).
 #  - --sync-config is ALSO the only way to apply a host config edit at all: the
 #    guest keeps its own ~/.config/wt/config.yaml on the persistent data disk, so
@@ -67,7 +67,12 @@ DASH_PORT=7300
 PORTS=""
 EXTRA_LINKS=""
 META_REL=""
+HOST_MOUNTS=""        # newline-separated, as written in the config (before expansion)
+HOST_MOUNTS_SET=0     # 1 once lima.host_mounts appears in the flattened config
+GUEST_READ_PATHS=""   # "key<TAB>path" lines: config paths the guest reads at runtime
 
+NL='
+'
 expand_home() { case "$1" in "~"|"~/"*) printf '%s%s' "$HOME" "${1#\~}";; *) printf '%s' "$1";; esac; }
 
 while IFS="$(printf '\t')" read -r key val; do
@@ -79,8 +84,17 @@ while IFS="$(printf '\t')" read -r key val; do
     lima.data_disk)       DATA_DISK="$val" ;;
     lima.data_disk_size)  DATA_DISK_SIZE="$val" ;;
     dashboard.port)       DASH_PORT="$val" ;;
+    lima.host_mounts)     # scalar form: `none`, or a single path
+      HOST_MOUNTS_SET=1
+      [ "$val" = none ] || HOST_MOUNTS="$val" ;;
+    lima.host_mounts.[0-9]*)
+      HOST_MOUNTS_SET=1
+      HOST_MOUNTS="${HOST_MOUNTS:+$HOST_MOUNTS$NL}$val" ;;
+    hooks.dir|secrets.source)
+      GUEST_READ_PATHS="$GUEST_READ_PATHS$key	$val$NL" ;;
     ports.[0-9]*)         PORTS="$PORTS $val" ;;
     clone_paths.*)        # clones outside ~/repos must persist too: symlink them onto the data disk
+      GUEST_READ_PATHS="$GUEST_READ_PATHS$key	$val$NL"
       p="$(expand_home "$val")"
       case "$p" in
         "$HOME"/*) EXTRA_LINKS="$EXTRA_LINKS ${p#"$HOME"/}" ;;
@@ -99,6 +113,57 @@ while IFS="$(printf '\t')" read -r key val; do
 done <<EOF
 $(wt_yaml_flatten "$CONFIG")
 EOF
+
+# ---- host mounts (lima.host_mounts) ---------------------------------------------
+# Default ["~"]: the whole home, read-only — exactly what this template always
+# mounted. The flattener emits nothing for an empty list, so `host_mounts: []`
+# (or a bare `host_mounts:` with no items) is detected on the raw file: an
+# explicit empty list means "no mounts", never "fall back to the whole home".
+if [ "$HOST_MOUNTS_SET" = 0 ]; then
+  if awk '
+    /^[^[:space:]#][^:]*:/ { top = $0; sub(/:.*/, "", top) }
+    top == "lima" && /^  host_mounts:[[:space:]]*(\[[[:space:]]*\])?[[:space:]]*(#.*)?$/ { found = 1 }
+    END { exit found ? 0 : 1 }' "$CONFIG"; then
+    HOST_MOUNTS_SET=1
+  else
+    HOST_MOUNTS="~"
+  fi
+fi
+MOUNT_PATHS=""     # expanded, newline-separated — what the coverage checks compare against
+HOST_MOUNTS_BLOCK=""
+if [ -z "$HOST_MOUNTS" ]; then
+  HOST_MOUNTS_BLOCK="mounts: []"
+else
+  HOST_MOUNTS_BLOCK="mounts:"
+  while IFS= read -r m; do
+    [ -n "$m" ] || continue
+    p="$(expand_home "$m")"
+    [ "$p" = / ] || p="${p%/}"
+    case "$p" in
+      /*) : ;;
+      *) echo "ERROR: lima.host_mounts entry '$m' is not an absolute path (or ~/...)" >&2; exit 1 ;;
+    esac
+    [ -d "$p" ] || echo "WARN: lima.host_mounts entry '$m' ($p) does not exist on this host" >&2
+    # A bare ~ stays literal (Lima expands it itself): that keeps the default
+    # rendering byte-identical to the template's historical hard-coded block.
+    loc="$p"; [ "$m" = "~" ] && loc="~"
+    HOST_MOUNTS_BLOCK="$HOST_MOUNTS_BLOCK${NL}  - location: \"$loc\"${NL}    writable: false   # read-only: copy things out if needed; real work lives on the VM disk"
+    MOUNT_PATHS="$MOUNT_PATHS$p$NL"
+  done <<EOF
+$HOST_MOUNTS
+EOF
+fi
+# is_mounted <abs-path>: 0 when the path is one of the mounts or below one
+is_mounted() {
+  while IFS= read -r m; do
+    [ -n "$m" ] || continue
+    [ "$m" = / ] && return 0
+    case "$1" in "$m"|"$m"/*) return 0 ;; esac
+  done <<EOF
+$MOUNT_PATHS
+EOF
+  return 1
+}
 
 # ---- instance status (drives --sync-config, the honest-refusal and the start) --
 # Same --json rule as everywhere: never silence the listing's stderr; abort
@@ -127,7 +192,7 @@ if [ "$SYNC_CONFIG" = 1 ]; then
   echo "      if any session is missing, check that the unit has it: systemctl show wt-dashboard -p KillMode"
   echo "Provisioning-level changes (stacks:, agents) additionally need one idempotent run in the guest (no restart):"
   echo "  limactl shell $INSTANCE -- bash -lc 'git -C ~/worktree-vm pull --ff-only && bash ~/worktree-vm/install.sh'"
-  echo "Platform facts (cpus/memory/ports/disks) still require: limactl delete $INSTANCE, then up.sh (work survives on the data disk)."
+  echo "Platform facts (cpus/memory/ports/disks/mounts) still require: limactl delete $INSTANCE, then up.sh (work survives on the data disk)."
   exit 0
 fi
 
@@ -147,7 +212,7 @@ if [ "$INSTANCE_STATUS" = "Running" ]; then
   echo "       so the paths must be absolute.)"
   echo "  full reboot + provision:  limactl stop $INSTANCE && limactl start $INSTANCE"
   echo "      (WARNING: restarts the VM — every running tmux/agent session is killed)"
-  echo "  platform facts (cpus/memory/ports/disks): limactl delete $INSTANCE, then up.sh"
+  echo "  platform facts (cpus/memory/ports/disks/mounts): limactl delete $INSTANCE, then up.sh"
   echo "      (work, sessions and auth survive on the data disk)"
   exit 1
 fi
@@ -164,8 +229,6 @@ case "$(uname -m)" in
 esac
 
 # ---- blocks -------------------------------------------------------------------
-NL='
-'
 PORT_FORWARDS="  - guestPort: $DASH_PORT${NL}    hostPort: $DASH_PORT"
 for p in $PORTS; do
   PORT_FORWARDS="$PORT_FORWARDS${NL}  - guestPort: $p${NL}    hostPort: $p"
@@ -193,13 +256,23 @@ if [ -n "$DATA_DISK" ]; then
   fi
 fi
 
-# The repo checkout is visible in the guest only when it lives under your home
-# (the home mount); otherwise the guest falls back to a public clone.
-case "$REPO_DIR" in
-  "$HOME"/*) : ;;
-  *) echo "NOTE: $REPO_DIR is outside \$HOME — the guest will clone from GitHub instead of this checkout" >&2 ;;
-esac
 REPO_URL="https://github.com/MauRiEEZZZ/worktree-vm.git"
+# The repo checkout is visible in the guest only when it lives under one of the
+# host mounts; otherwise the guest falls back to a public clone.
+is_mounted "$REPO_DIR" \
+  || echo "WARN: $REPO_DIR is not under any lima.host_mounts path — the guest will clone from $REPO_URL instead of this checkout" >&2
+# Config paths the guest reads at runtime. A `~/...` value expands to the GUEST
+# home there, so it is guest-local; an absolute path that is a host path (under
+# the host home, or existing on this host) is only readable through a mount.
+while IFS="$(printf '\t')" read -r key val; do
+  [ -n "$key" ] || continue
+  case "$val" in /*) : ;; *) continue ;; esac
+  case "$val" in "$HOME"/*) : ;; *) [ -e "$val" ] || continue ;; esac
+  is_mounted "${val%/}" \
+    || echo "WARN: $key = $val is not under any lima.host_mounts path — the guest cannot read it" >&2
+done <<EOF
+$GUEST_READ_PATHS
+EOF
 # The guest clones THIS checkout, and `git clone` takes the source's current branch.
 # So a rebuild while you happen to be sitting on a feature branch silently gives the
 # VM that branch — and every later boot keeps ff-pulling it. Pin the default branch
@@ -235,6 +308,7 @@ TPL="${TPL//@IMAGE_LOCATION@/$IMAGE_LOCATION}"
 TPL="${TPL//@IMAGE_ARCH@/$IMAGE_ARCH}"
 TPL="${TPL//@ADDITIONAL_DISKS@/$ADDITIONAL_DISKS}"
 TPL="${TPL//@PORT_FORWARDS@/$PORT_FORWARDS}"
+TPL="${TPL//@HOST_MOUNTS@/$HOST_MOUNTS_BLOCK}"
 TPL="${TPL//@PROVISION_DATA_DISK@/$PROVISION_DATA_DISK}"
 TPL="${TPL//@REPO_HOST_DIR@/$REPO_DIR}"
 TPL="${TPL//@REPO_URL@/$REPO_URL}"
