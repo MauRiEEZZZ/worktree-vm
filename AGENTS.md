@@ -13,8 +13,10 @@ product or customer belongs in an overlay, never here.
 
 - **`main` only changes through a pull request.** The ruleset *main: pull requests only*
   enforces it: a PR, one approval, every review thread resolved, stale approvals dismissed on a
-  new push, no force push, no deletion. There is no direct push — also not for administrators,
-  who may skip the approval only inside a PR.
+  new push, no force push, no deletion. Nobody pushes to `main` directly, administrators
+  included. The ruleset's only bypass is for the repository's admin role in *pull request*
+  mode: an admin could merge a PR without its approval. By agreement that is not used — every
+  PR waits for its approval. (The bypass list is visible to admins only; others see none.)
 - **One branch per topic**, from `origin/main`. If other sessions share your checkout, work in a
   separate `git worktree` instead of checking out, resetting or stashing in it.
 - **Review.** Request a review from a maintainer. Resolve findings with follow-up commits on the
@@ -46,10 +48,10 @@ product or customer belongs in an overlay, never here.
 
 ## Working with the VM
 
-- **Never search `/` inside the VM** (`find /`, `grep -r /`, `du /`). The guest mounts the host's
-  home directory read-only; on macOS a search that walks into protected folders (Documents,
-  Music, other apps' data) makes the host wait for a privacy prompt, and until it is answered
-  every file request through the mount blocks — every session in the VM hangs. Search the
-  directory you mean.
+- **Never search `/` inside the VM** (`find /`, `grep -r /`, `du /`). By default the guest mounts
+  the host's home directory read-only (`lima.host_mounts` in the config narrows that to a list of
+  paths); on macOS a search that walks into protected folders (Documents, Music, other apps'
+  data) makes the host wait for a privacy prompt, and until it is answered every file request
+  through the mount blocks — every session in the VM hangs. Search the directory you mean.
 - A VM-wide hang with processes in state `D` and wchan `request_wait_answer` is exactly that:
   look for a prompt on the host's screen.
