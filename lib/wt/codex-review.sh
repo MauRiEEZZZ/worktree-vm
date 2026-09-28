@@ -14,13 +14,15 @@
 # other quiet way to lose it: a base that does not exist in the clone (origin/main on a
 # repo whose default branch is develop). Codex exits 0 and picks a base of its own.
 #
-# usage: codex-review.sh [--base <ref>] [--dir <worktree>] [ignored...]
+# usage: codex-review.sh [--base <ref>] [--dir <worktree>] [--model <slug>] [ignored...]
 #   --base  the ref to review against. One that does not exist here is replaced by the
 #           repo's default branch (origin/HEAD, else `git remote show origin`), and that
 #           replacement is said. Without --base the default branch is used.
 #   --dir   the worktree to review (default: the current directory). The directory
 #           carries the scope, as in wt-review: the review worktree holds the committed
 #           state, the dev worktree also holds the uncommitted work.
+#   --model the Codex model to review with, passed on as `-c model="<slug>"`. Without it
+#           Codex uses its own default. The first output line names the model either way.
 #   Anything else — a stray '.', for instance — is reported and IGNORED instead of
 #   becoming Codex's [PROMPT].
 #
@@ -60,14 +62,16 @@ needs_value() {
   esac
 }
 
-base="" dir="" stray=()
+base="" dir="" model="" stray=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --base)   needs_value --base "${2-}"; base="$2"; shift 2 ;;
     --base=*) base="${1#--base=}"; shift ;;
     --dir)    needs_value --dir "${2-}"; dir="$2"; shift 2 ;;
     --dir=*)  dir="${1#--dir=}"; shift ;;
-    -h|--help) sed -n '2,31p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --model)  needs_value --model "${2-}"; model="$2"; shift 2 ;;
+    --model=*) model="${1#--model=}"; shift ;;
+    -h|--help) sed -n '2,33p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *)        stray+=("$1"); shift ;;
   esac
 done
@@ -115,13 +119,19 @@ fi
 out="$(mktemp)"; err="$(mktemp)"
 trap 'rm -f "$out" "$err"' EXIT
 # read-only sandbox: the reviewer must not be able to touch the worktree it reviews.
-codex review -c sandbox_mode="read-only" --base "$base" </dev/null >"$out" 2>"$err"; rc=$?
-[ "$rc" -eq 0 ] || did_not_run "codex review exited $rc" "$err"
+# The model goes on as an array element, never through word splitting or eval: a slug
+# with a quote or a space reaches codex as one literal value, and codex refuses it.
+# Quoted as a TOML string because `-c` parses its value as TOML: unquoted, a slug that
+# happens to look like a number would arrive as one.
+modelargs=()
+[ -n "$model" ] && modelargs=(-c "model=\"$model\"")
+codex review -c sandbox_mode="read-only" ${modelargs[@]+"${modelargs[@]}"} --base "$base" </dev/null >"$out" 2>"$err"; rc=$?
+[ "$rc" -eq 0 ] || did_not_run "codex review exited $rc${model:+ (model $model)}" "$err"
 if [ -z "$(tr -d '[:space:]' < "$out")" ]; then
   rc=1; did_not_run "codex review exited 0 but produced no output (no review was given)" "$err"
 fi
 
-echo "CODEX SECOND OPINION: ran ($(codex --version 2>/dev/null | head -1 || echo codex), base $base @ $sha, dir $dir, $(wc -l < "$out" | tr -d ' ') lines follow)"
+echo "CODEX SECOND OPINION: ran ($(codex --version 2>/dev/null | head -1 || echo codex), model ${model:-codex default}, base $base @ $sha, dir $dir, $(wc -l < "$out" | tr -d ' ') lines follow)"
 for n in ${notes[@]+"${notes[@]}"}; do echo "  note: $n"; done
 echo
 cat "$out"
