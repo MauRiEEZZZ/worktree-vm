@@ -23,6 +23,7 @@ DEFAULT_BASE_BRANCH=main
 REVIEW_OWNER=""
 REVIEW_MODEL=""
 WATCHER_MODEL=""
+WATCHER_CODEX_MODEL=""
 AGENT_DEFAULT=claude
 DEFAULT_MODEL=""
 MODEL_CHOICES=""
@@ -55,6 +56,7 @@ if [ -f "$CONFIG_FILE" ]; then
       github.review_owner)    REVIEW_OWNER="$val" ;;
       agents.review_model)    REVIEW_MODEL="$val" ;;
       github.review_model)    WATCHER_MODEL="$val" ;;
+      github.review_codex_model) WATCHER_CODEX_MODEL="$val" ;;
       agents.default)         AGENT_DEFAULT="$val" ;;
       agents.default_model)   DEFAULT_MODEL="$val" ;;
       agents.model_choices.[0-9]*) MODEL_CHOICES="${MODEL_CHOICES:+$MODEL_CHOICES }$val" ;;
@@ -160,6 +162,7 @@ DASH_ENV="$WT_CONFIG_DIR/dashboard.env"
   env_line PR_REVIEW_WATCH  "1"
   env_line PR_REVIEW_OWNER  "$REVIEW_OWNER"
   env_line PR_REVIEW_MODEL  "$WATCHER_MODEL"
+  env_line PR_REVIEW_CODEX_MODEL "$WATCHER_CODEX_MODEL"
   env_line DEPLOY_RE        "$DEPLOY_URL_REGEX"
   echo "# Instruction the dashboard appends to a bare issue/PR URL (house rules)."
   env_line TASK_TEMPLATE    "$TASK_TEMPLATE"

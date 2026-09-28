@@ -37,6 +37,13 @@ github:
   # report and decide yourself, so a missed nuance costs you no lead time.
   # Mid-tier is the sensible spend here. Empty = your account default.
   review_model: ""
+  # Model for the CODEX second opinion inside those same watcher reviews. A FOURTH
+  # key, for the one thing review_model above cannot buy: the second opinion is the
+  # half you cannot cross-check by reading the report, because its whole purpose is
+  # to disagree with the first. Empty = whatever your `codex` defaults to. Set it to
+  # a slug your codex accepts; a stale slug is recovered from by the reviewer, which
+  # then reports which model it actually used.
+  review_codex_model: ""
   # Handle wt-pr-draft asks for a review from once the draft PR is open. GitHub's
   # to change, so it is configurable; empty skips the request entirely.
   copilot_reviewer: 'copilot-pull-request-reviewer[bot]'
