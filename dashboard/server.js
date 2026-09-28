@@ -55,6 +55,10 @@ const PR_REVIEW_OWNER = process.env.PR_REVIEW_OWNER || '';            // org/use
 // the report and decides, so a missed nuance costs no lead time (unlike the
 // pre-PR self-review gate). '' = account default.
 const PR_REVIEW_MODEL = process.env.PR_REVIEW_MODEL || '';
+// Model for the CODEX second opinion inside those same reviews (github.review_codex_model).
+// Its own key for the same reason: the second opinion is the half the owner cannot
+// cross-check by reading, so it is worth spending on separately. '' = codex's own default.
+const PR_REVIEW_CODEX_MODEL = process.env.PR_REVIEW_CODEX_MODEL || '';
 const REVIEW_SEEN = path.join(WT_META, 'review-seen.json');          // ledger (NOT in META_DIR, which is scanned as sessions): <owner/repo>#<n> already handled
 // Attention-digest: a cheap LLM pass over idle sessions -> ranked "who needs you, why, next".
 const DIGEST = process.env.DIGEST !== '0';                           // feature on by default (on-demand)
@@ -519,7 +523,13 @@ function reviewPrompt(pr, repoFull, since, baseRef) {
     // stale registration meant every review fell back to cold `codex exec` starts —
     // 42 of them on one session, measured 2026-09-17 — while still producing a
     // review, so the degradation was invisible.
-    `Also get an INDEPENDENT second opinion from Codex on the same diff, by running: codex review -c sandbox_mode="read-only" --base origin/${baseRef || 'HEAD'} . Do NOT look for codex MCP tools (codex no longer serves MCP) and do not fall back to 'codex exec'. If it fails, say so in your report rather than silently reviewing alone.`,
+    `Also get an INDEPENDENT second opinion from Codex on the same diff, by running: codex review -c sandbox_mode="read-only"${PR_REVIEW_CODEX_MODEL ? ` -c model="${PR_REVIEW_CODEX_MODEL}"` : ''} --base origin/${baseRef || 'HEAD'} . Do NOT look for codex MCP tools (codex no longer serves MCP) and do not fall back to 'codex exec'. If it fails, say so in your report rather than silently reviewing alone.`,
+    // A configured slug can go stale between codex releases; let the reviewer recover
+    // within the generation it was told to use, and say which one it ended up on, so a
+    // silent downgrade shows up in the report instead of in nobody's notes.
+    ...(PR_REVIEW_CODEX_MODEL ? [
+      `If codex refuses the model "${PR_REVIEW_CODEX_MODEL}", read ~/.codex/models_cache.json, pick the highest available slug of that same generation, and say in your report which model the second opinion actually ran on.`,
+    ] : []),
     `Compare your findings with Codex's (where do you agree/disagree) and produce ONE consolidated list of findings, each with an exact file:line.`,
     `ANCHOR the review as a PENDING pull-request review with INLINE, line-anchored comments (not as a loose issue comment):`,
     `- Build JSON and run: gh api repos/${repoFull}/pulls/${pr.number}/reviews --input <file> . OMIT "event" -> that creates a PENDING review (a draft; only you see it until you submit it in the GitHub UI).`,

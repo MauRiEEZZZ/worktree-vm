@@ -38,4 +38,23 @@ PROV="$(grep -v '^\s*#' "$T_REPO/provision/40-agents.sh")"
 assert_not_contains "$PROV" 'mcp add' "provisioning no longer registers codex as an MCP server"
 assert_contains "$PROV" 'codex review --help' "and proves the command it depends on exists instead of assuming it"
 assert_contains "$PROV" 'mcp remove' "while cleaning up the stale registration earlier provisions left"
+
+# The second opinion's model is configurable (github.review_codex_model ->
+# PR_REVIEW_CODEX_MODEL). Empty must leave the command exactly as it was — the
+# default path is what nearly every install runs — and a set value must reach the
+# `codex review` line, with the recovery instruction that makes a stale slug visible.
+assert_contains "$PROMPT" 'PR_REVIEW_CODEX_MODEL' "the watcher's prompt can carry a codex model"
+assert_contains "$PROMPT" 'models_cache.json' "and tells the reviewer how to recover from a stale slug"
+CFG="$(grep -v '^\s*#' "$T_REPO/lib/config/generate-env.sh")"
+assert_contains "$CFG" 'github.review_codex_model' "the config key is parsed"
+assert_contains "$CFG" 'PR_REVIEW_CODEX_MODEL' "and reaches the service environment"
+assert_contains "$(cat "$T_REPO/config.example.yaml")" 'review_codex_model' "and is documented for the user"
+
+# Shape of the line itself, so this guards server.js and not a copy of its logic:
+# the override must be CONDITIONAL, so the default install's command is unchanged.
+CODEXLINE="$(sed -n '/Also get an INDEPENDENT second opinion from Codex/p' "$T_REPO/dashboard/server.js")"
+assert_contains "$CODEXLINE" 'PR_REVIEW_CODEX_MODEL ?' "the model override is conditional"
+assert_contains "$CODEXLINE" '-c model=' "a configured slug becomes a -c model override"
+assert_contains "$CODEXLINE" ": ''" "and an empty setting adds nothing to the command"
+
 t_end
