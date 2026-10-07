@@ -19,14 +19,27 @@ t_sandbox_home
 # that counts strings would fail on its own documentation.
 TASK="$(sed -n '/^  local task="You are an INDEPENDENT reviewer/p' "$T_REPO/lib/wt/commands.sh")"
 CODEXCMD="$(sed -n '/codexcmd=/p' "$T_REPO/lib/wt/commands.sh" | grep -v '^\s*#')"
-assert_contains "$CODEXCMD" 'codex review' "wt-review runs the first-class review subcommand"
-assert_contains "$CODEXCMD" 'sandbox_mode=' "read-only, so it cannot touch the worktree it reviews"
+# Since 2026-10-07 the command is the helper lib/wt/codex-review.sh, which runs
+# `codex review` itself (see tests/t/21 for what the helper guarantees).
+HELPER="$(grep -v '^\s*#' "$T_REPO/lib/wt/codex-review.sh")"
+assert_contains "$CODEXCMD" 'codex-review.sh' "wt-review hands the reviewer the helper, by absolute path"
+assert_contains "$CODEXCMD" '--base origin/$defbr' "against the repo's own default branch"
+assert_contains "$HELPER" 'codex review' "and the helper runs the first-class review subcommand"
+assert_contains "$HELPER" 'sandbox_mode="read-only"' "read-only, so it cannot touch the worktree it reviews"
 assert_contains "$TASK" '$codexcmd' "and the task hands the reviewer that exact command"
+# The sentence used to continue with " . That is ..." and the reviewers ran the
+# command WITH the full stop, which `codex review` took as its [PROMPT] and refused
+# next to --base — the second opinion silently never ran.
+assert_not_contains "$TASK" '$codexcmd .' "with no full stop glued to it"
+assert_contains "$TASK" 'DID NOT RUN' "and tells the reviewer what a failed run looks like"
 assert_not_contains "$TASK" 'mcp__codex__* tools' "it no longer sends the reviewer after MCP tools that do not exist"
 assert_contains "$TASK" "do not fall back to 'codex exec'" "and forbids the cold-start fallback outright"
 
 PROMPT="$(sed -n '/^function reviewPrompt/,/^}/p' "$T_REPO/dashboard/server.js" | grep -v '^\s*//')"
 assert_contains "$PROMPT" 'codex review' "the watcher's prompt asks for the same thing"
+assert_contains "$PROMPT" '${CODEX_REVIEW}' "through the same helper"
+assert_contains "$(grep '^const CODEX_REVIEW' "$T_REPO/dashboard/server.js")" "'codex-review.sh'" "which is that file, next to the dashboard"
+assert_not_contains "$(printf '%s' "$PROMPT" | grep codex-review.sh)" '} . ' "with no full stop glued to the command there either"
 assert_not_contains "$PROMPT" 'mcp__codex' "and not for MCP tools"
 assert_contains "$PROMPT" "do not fall back to 'codex exec'" "and forbids the fallback there too"
 assert_contains "$(cat "$T_REPO/dashboard/server.js")" 'baseRefName' "it looks up the PR base, so codex reviews against the right ref"

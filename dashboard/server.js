@@ -19,6 +19,7 @@ const CLAUDE_PROJECTS = path.join(HOME, '.claude', 'projects');  // surviving co
 const WT_META  = path.join(HOME, '.wt-meta');           // wt-* markers (e.g. <sid>.agent)
 const AGENTS = ['claude', 'codex'];                     // selectable AI agents per session
 const STATIC = path.join(__dirname, 'public');
+const CODEX_REVIEW = path.join(__dirname, '..', 'lib', 'wt', 'codex-review.sh');  // the reviewer's Codex second opinion, loud on failure
 // SSH alias/host of this VM as reachable from the user's workstation; used in the
 // copy-attach / port-forward one-liners. Empty = the one-liners omit the ssh hop.
 const SSH_HOST = process.env.WT_SSH_HOST || '';
@@ -519,7 +520,13 @@ function reviewPrompt(pr, repoFull, since, baseRef) {
     // stale registration meant every review fell back to cold `codex exec` starts —
     // 42 of them on one session, measured 2026-09-17 — while still producing a
     // review, so the degradation was invisible.
-    `Also get an INDEPENDENT second opinion from Codex on the same diff, by running: codex review -c sandbox_mode="read-only" --base origin/${baseRef || 'HEAD'} . Do NOT look for codex MCP tools (codex no longer serves MCP) and do not fall back to 'codex exec'. If it fails, say so in your report rather than silently reviewing alone.`,
+    // ... and the sentence that used to end right after that command gave Codex the
+    // full stop as its [PROMPT], a usage error next to --base: the second opinion had
+    // not run for weeks while every report said "Codex: no findings" (2026-10-07).
+    // lib/wt/codex-review.sh drops stray arguments, falls back to the repo's real
+    // default branch when the base is missing, and says on its first line whether
+    // Codex ran — so a run that failed cannot be reported as a clean one.
+    `Also get an INDEPENDENT second opinion from Codex on the same diff. Run EXACTLY this command, with nothing appended to it: bash ${CODEX_REVIEW}${baseRef ? ` --base origin/${baseRef}` : ''}  Its first line tells you whether Codex ran (CODEX SECOND OPINION: ran / NOTHING TO REVIEW / DID NOT RUN); only 'ran' is a Codex opinion. On DID NOT RUN, say so in your report rather than silently reviewing alone, and never write that Codex found nothing. The helper wraps the first-class 'codex review' subcommand; do NOT look for codex MCP tools (codex no longer serves MCP) and do not fall back to 'codex exec'.`,
     `Compare your findings with Codex's (where do you agree/disagree) and produce ONE consolidated list of findings, each with an exact file:line.`,
     `ANCHOR the review as a PENDING pull-request review with INLINE, line-anchored comments (not as a loose issue comment):`,
     `- Build JSON and run: gh api repos/${repoFull}/pulls/${pr.number}/reviews --input <file> . OMIT "event" -> that creates a PENDING review (a draft; only you see it until you submit it in the GitHub UI).`,
