@@ -31,22 +31,11 @@
 # so "Codex ran and found nothing" can only ever be written over the first.
 set -u
 
-base="" dir="" stray=()
-while [ $# -gt 0 ]; do
-  case "$1" in
-    --base)   base="${2:-}"; shift 2 ;;
-    --base=*) base="${1#--base=}"; shift ;;
-    --dir)    dir="${2:-}"; shift 2 ;;
-    --dir=*)  dir="${1#--dir=}"; shift ;;
-    -h|--help) sed -n '2,32p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
-    *)        stray+=("$1"); shift ;;
-  esac
-done
-
 notes=()
-[ "${#stray[@]}" -gt 0 ] && notes+=("ignored argument(s) that would have become Codex's [PROMPT]: ${stray[*]}")
+rc=1
 
-# did_not_run <reason> [<file whose tail to show>] : the loud failure, non-zero exit
+# did_not_run <reason> [<file whose tail to show>] : the loud failure, non-zero exit.
+# Defined before the argument loop so the loop itself can fail loudly.
 did_not_run() {
   local reason="$1" tail_of="${2:-}" n
   echo "CODEX SECOND OPINION: DID NOT RUN: $reason"
@@ -58,7 +47,32 @@ did_not_run() {
   echo "  Report this in the review: Codex did NOT review this diff. Do not write 'Codex: no findings'."
   exit "${rc:-1}"
 }
-rc=1
+
+# needs_value <flag> [<candidate>] : a flag that takes a value must be given one.
+# Without this, `shift 2` with a single argument left shifts nothing and the loop below
+# spins forever -- in an unattended review that is a silent hang, which is the one failure
+# this helper exists to make loud. A following flag is refused too: `--base --dir x` would
+# otherwise swallow `--dir` as the base and quietly fall back to the default branch.
+needs_value() {
+  case "${2-}" in
+    "")  did_not_run "$1 needs a value" ;;
+    --*) did_not_run "$1 needs a value, got the flag $2" ;;
+  esac
+}
+
+base="" dir="" stray=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --base)   needs_value --base "${2-}"; base="$2"; shift 2 ;;
+    --base=*) base="${1#--base=}"; shift ;;
+    --dir)    needs_value --dir "${2-}"; dir="$2"; shift 2 ;;
+    --dir=*)  dir="${1#--dir=}"; shift ;;
+    -h|--help) sed -n '2,31p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *)        stray+=("$1"); shift ;;
+  esac
+done
+
+[ "${#stray[@]}" -gt 0 ] && notes+=("ignored argument(s) that would have become Codex's [PROMPT]: ${stray[*]}")
 
 dir="${dir:-$PWD}"
 cd "$dir" 2>/dev/null || did_not_run "cannot enter $dir"
@@ -83,6 +97,12 @@ elif ! git rev-parse --verify --quiet "$base^{commit}" >/dev/null; then
   fi
 fi
 sha="$(git rev-parse --short=12 "$base")"
+
+# Untracked files are invisible to `codex review`, which works from the diff, and to the
+# `git diff` below -- so a worktree whose only change is new files reads as NOTHING TO
+# REVIEW. Say so rather than let the reviewer read silence as "Codex saw it and was happy".
+nuntracked="$(git ls-files --others --exclude-standard -- . 2>/dev/null | wc -l | tr -d ' ')"
+[ "${nuntracked:-0}" -gt 0 ] && notes+=("$nuntracked untracked file(s) are NOT part of Codex's review; it reviews the diff only")
 
 # nothing to review: HEAD and the working tree equal the merge-base with the base
 mb="$(git merge-base HEAD "$base" 2>/dev/null || echo "$base")"

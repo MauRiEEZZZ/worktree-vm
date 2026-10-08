@@ -104,7 +104,48 @@ assert_eq "$(wc -l < "$CODEX_LOG" | tr -d ' ')" "0" "and Codex is not started fo
 git -C "$WT" checkout -q feat/x
 
 # ---- 7. no codex at all -> DID NOT RUN, naming it -------------------------------------
-OUT="$(PATH="/usr/bin:/bin" bash "$HELPER" --base origin/develop --dir "$WT")"; RC=$?
+# A PATH of real system directories is not hermetic: whoever runs the suite may have codex
+# in /usr/bin. Build a directory holding only the tools the helper needs, and no codex.
+NOCODEX="$T_TMP/nocodex-bin"; mkdir -p "$NOCODEX"
+for b in bash sh git sed tail head wc cat tr sort grep awk mktemp rm dirname basename; do
+  p="$(command -v "$b" 2>/dev/null)" && ln -sf "$p" "$NOCODEX/$b"
+done
+assert_no_path "$NOCODEX/codex" "the stripped PATH really has no codex"
+OUT="$(PATH="$NOCODEX" bash "$HELPER" --base origin/develop --dir "$WT")"; RC=$?
 assert_eq "$RC" "1" "a missing codex is a failure"
 assert_contains "$(first_line "$OUT")" "DID NOT RUN: codex is not installed" "that says what is missing"
+
+# ---- 8. a flag that takes a value but is not given one: loud, not a hang ---------------
+# Before the guard, `shift 2` with a single argument left shifted nothing and the parse
+# loop spun forever. Unattended that is a silent hang -- the exact failure this helper
+# exists to remove, so it has to fail the suite rather than stall it.
+# run_bounded <seconds> <cmd...>: the command's output on stdout, 124 if it was still running.
+run_bounded() {
+  local secs="$1"; shift
+  local o="$T_TMP/bounded.out" p i=0
+  "$@" > "$o" 2>&1 & p=$!
+  while kill -0 "$p" 2>/dev/null; do
+    i=$((i + 1))
+    if [ "$i" -gt $((secs * 10)) ]; then
+      kill -9 "$p" 2>/dev/null; wait "$p" 2>/dev/null; cat "$o"; return 124
+    fi
+    sleep 0.1
+  done
+  wait "$p"; i=$?; cat "$o"; return "$i"
+}
+for flag in --base --dir; do
+  OUT="$(run_bounded 5 bash "$HELPER" "$flag")"; RC=$?
+  assert_eq "$([ "$RC" = 124 ] && echo hung || echo finished)" "finished" "$flag with no value does not hang"
+  assert_eq "$RC" "1" "$flag with no value is a failure"
+  assert_contains "$(first_line "$OUT")" "DID NOT RUN: $flag needs a value" "naming the flag that is short"
+done
+
+# ---- 9. a flag whose value is the next flag: refused, not swallowed --------------------
+# `--base --dir "$WT"` used to take `--dir` as the base, fail to resolve it, and fall back
+# to the default branch with a note -- reviewing the right diff by luck and the wrong one
+# whenever the fallback differed.
+OUT="$(run_bounded 5 bash "$HELPER" --base --dir "$WT")"; RC=$?
+assert_eq "$([ "$RC" = 124 ] && echo hung || echo finished)" "finished" "a flag-as-value does not hang either"
+assert_eq "$RC" "1" "and is a failure"
+assert_contains "$(first_line "$OUT")" "DID NOT RUN: --base needs a value, got the flag --dir" "saying what it got instead"
 t_end
