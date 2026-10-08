@@ -102,8 +102,10 @@ wt-review [<repo> <name>] [--scope committed|working|all] [--agent claude|codex]
   current worktree — so a dev session can review itself with just `wt-review`.
   The reviewer inspects the LIVE dev worktree read-only (never touches the dev
   session) against the merge-base with the default branch, gets a second opinion
-  from Codex (via the MCP server), consolidates, and REPORTS only — posts nothing
-  to GitHub (--auto --deny-post). Read the findings via Remote Control.
+  from Codex (lib/wt/codex-review.sh around `codex review`; its first line says
+  whether Codex ran, so a failed run is never reported as "no findings"),
+  consolidates, and REPORTS only — posts nothing to GitHub (--auto --deny-post).
+  Read the findings via Remote Control.
   scope: committed = committed diff only; working (default) = + uncommitted
   tracked changes; all = + untracked files. Clean up with wt-rm <repo> <name>-review.
   The review runs on agents.review_model (empty = your account default — never
