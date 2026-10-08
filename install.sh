@@ -103,6 +103,9 @@ for s in $WT_STACKS; do
     powershell) pwsh --version 2>/dev/null || echo "pwsh: install failed?";;
     azure-cli)  az version --output yaml 2>/dev/null | head -1 || echo "az: install failed?";;
     pulumi)     PATH="$PATH:/opt/pulumi/bin" pulumi version 2>/dev/null || echo "pulumi: install failed?";;
+    # "not installed" rather than "install failed?": dapr.sh skips deliberately when the
+    # version lookup fails, so a missing CLI here is a named outcome, not a surprise.
+    dapr)       dapr version 2>/dev/null | head -1 || echo "dapr: not installed (see the WARN above)";;
   esac
 done
 echo

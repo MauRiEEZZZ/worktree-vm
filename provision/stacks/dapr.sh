@@ -13,13 +13,18 @@ DPKG_ARCH="${DPKG_ARCH:-$(dpkg --print-architecture)}"
 
 VERSION="${WT_DAPR_VERSION:-${WT_DAPR_VERSION_DEFAULT:-}}"
 if [ -z "$VERSION" ]; then
+  # `|| VERSION=""` is load-bearing under `set -e -o pipefail`: an unreachable or rate-limited
+  # api.github.com makes curl exit non-zero, pipefail hands that to the assignment, and -e kills
+  # the whole provisioning run -- over an optional stack, with the skip below never reached.
   VERSION="$(curl -fsSL https://api.github.com/repos/dapr/cli/releases/latest \
-    | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
+    | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)" || VERSION=""
 fi
 if [ -z "$VERSION" ]; then
   echo "WARN: could not determine a dapr CLI version (no pin, and the release lookup failed); skipping" >&2
   exit 0
 fi
+# The download URL carries the tag, which is v-prefixed; a hand-pinned 1.16.1 would 404.
+case "$VERSION" in v*) ;; *) VERSION="v$VERSION" ;; esac
 
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 if curl -fsSL -o "$TMP/dapr.tar.gz" \
