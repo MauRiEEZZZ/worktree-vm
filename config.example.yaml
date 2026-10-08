@@ -125,11 +125,18 @@ hooks:
   dir: ~/.config/wt/hooks
 
 # Opt-in toolchains installed by provision/90-stacks.sh. Available:
-# dotnet, powershell, azure-cli, pulumi, playwright. Empty = none.
+# dotnet, powershell, azure-cli, pulumi, playwright, dapr. Empty = none.
 stacks: []
 
 # Per-stack settings (only read when the stack is enabled).
 stack_options:
+  # Exact Dapr CLI version for the dapr stack (e.g. v1.18.2) — note the leading
+  # 'v', it is the release tag. Empty = the latest release, which means the
+  # toolchain can change under running sessions; pin it if that matters. The
+  # stack installs the CLI only and never runs `dapr init` — see its header.
+  # The WT_DAPR_VERSION environment variable overrides this.
+  dapr_version: ""
+
   # Exact .NET SDK version for the dotnet stack (e.g. 10.0.301) — pin it when a
   # project's global.json demands a specific band. Empty = the latest LTS
   # channel. The WT_DOTNET_VERSION environment variable overrides this.
