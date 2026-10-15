@@ -792,8 +792,59 @@ function send(res, code, data, type) {
 function readBody(req) {
   return new Promise((resolve) => { let b = ''; req.on('data', c => b += c); req.on('end', () => { try { resolve(JSON.parse(b || '{}')); } catch { resolve({}); } }); });
 }
+// --- request guard ---------------------------------------------------------
+// There is no login here, and there should not be one. The server binds to
+// loopback and is reached through the VM's port forward, so the only caller
+// that can reach it is something already on this machine. What a loopback
+// binding does NOT keep out is the browser: any page you happen to open can
+// submit a form to 127.0.0.1 and, while it cannot read the answer, the side
+// effect is the attack. `POST /api/sessions` starts an agent in a worktree with
+// this machine's git and gh credentials, and `auto` in that same body turns off
+// its approval prompts.
+//
+// A password would not help and a cookie would hurt: the browser attaches a
+// cookie to the forged request for free, which is what makes ambient authority
+// the wrong tool here. Three header checks do the job instead.
+//
+//   1. Host must be loopback. This is what stops DNS rebinding, where the
+//      attacker's name resolves to 127.0.0.1 and their Origin then honestly
+//      matches Host.
+//   2. On a mutating request, an Origin that is present must be our own. A
+//      cross-site form POST always carries the attacker's Origin. curl and the
+//      CLI carry none, and stay welcome.
+//   3. A mutating request with a body must declare application/json. That
+//      content type cannot be sent cross-origin without a preflight, and the
+//      preflight fails here because nothing answers OPTIONS.
+//
+// WT_DASHBOARD_HOSTS adds hostnames (comma-separated, host or host:port) for a
+// reverse proxy or a tunnel reached under another name.
+const EXTRA_HOSTS = (process.env.WT_DASHBOARD_HOSTS || '').split(',').map(s => s.trim()).filter(Boolean);
+function hostAllowed(host) {
+  if (!host) return false;                                   // HTTP/1.1 requires Host; no Host, no service
+  const name = host.replace(/:\d+$/, '').replace(/^\[|\]$/g, '');
+  return name === '127.0.0.1' || name === 'localhost' || name === '::1'
+    || EXTRA_HOSTS.includes(host) || EXTRA_HOSTS.includes(name);
+}
+function guard(req) {
+  const host = req.headers.host || '';
+  if (!hostAllowed(host)) return { code: 403, error: 'host not allowed' };
+  if (req.method === 'GET' || req.method === 'HEAD') return null;
+  const origin = req.headers.origin;
+  if (origin && origin !== `http://${host}` && origin !== `https://${host}`)
+    return { code: 403, error: 'cross-origin request refused' };
+  // Content-Length 0 is what a browser sends for `fetch(url, {method:"POST"})`
+  // with no body, which several endpoints here use; that stays allowed.
+  const len = req.headers['content-length'];
+  const hasBody = (len && len !== '0') || req.headers['transfer-encoding'];
+  const type = (req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+  if (hasBody && type !== 'application/json')
+    return { code: 415, error: 'body must be application/json' };
+  return null;
+}
 const server = http.createServer(async (req, res) => {
   try {
+    const refused = guard(req);
+    if (refused) return send(res, refused.code, { error: refused.error });
     const url = new URL(req.url, 'http://x');
     const p = url.pathname;
     if (req.method === 'GET' && (p === '/' || p === '/index.html'))
