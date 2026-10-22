@@ -816,6 +816,16 @@ function readBody(req) {
 //      content type cannot be sent cross-origin without a preflight, and the
 //      preflight fails here because nothing answers OPTIONS.
 //
+// Checks 2 and 3 skip GET and HEAD, which turns "GET and HEAD never change
+// state" from a convention into a security invariant of this file. A convenience
+// GET that starts, stops or deletes anything would be reachable cross-origin
+// from any page the user has open, because a cross-site GET needs no preflight
+// and carries no Origin we refuse. Every state change belongs behind POST or
+// DELETE. The same reasoning covers a future event stream: it is a GET, so what
+// keeps it private is that browsers refuse a cross-origin EventSource unless the
+// server sends Access-Control-Allow-Origin. Do not add that header to make a
+// stream connect; it would hand every open page a live read of the board.
+//
 // WT_DASHBOARD_HOSTS adds hostnames (comma-separated, host or host:port) for a
 // reverse proxy or a tunnel reached under another name.
 const EXTRA_HOSTS = (process.env.WT_DASHBOARD_HOSTS || '').split(',').map(s => s.trim()).filter(Boolean);
