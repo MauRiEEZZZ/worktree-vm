@@ -26,8 +26,9 @@ restart the dashboard — no VM restart. Provisioning-level changes (`stacks:`)
 additionally need `git -C ~/worktree-vm pull --ff-only && bash ~/worktree-vm/install.sh`
 inside the guest — the pull because `install.sh` provisions the clone it is in and
 only a boot pulls that clone, and `install.sh` rather than a bare
-`provision/90-stacks.sh` because only the former loads the derived env. Platform facts (`lima:` cpus/memory/ports/disks)
-always require `limactl delete` + `up.sh`. On WSL2 there is no host/guest
+`provision/90-stacks.sh` because only the former loads the derived env. `lima:` cpus/memory/disk
+change in place with `limactl stop` + `limactl edit` + start (the root disk is kept; see the
+`lima` table). Ports, added disks and `host_mounts` still require `limactl delete` + `up.sh`. On WSL2 there is no host/guest
 config split — edit `~/.config/wt/config.yaml` in the distro directly.
 
 Precedence: repo defaults → your config → environment variables (the derived
@@ -170,7 +171,7 @@ blanked, so a typo shows up in the session prompt instead of vanishing.
 | key | default | meaning |
 |---|---|---|
 | `instance` | `worktree-vm` | Lima instance name (ssh alias becomes `lima-<instance>`). |
-| `cpus` / `memory` / `disk` | `2` / `4GiB` / `100GiB` | VM sizing (defaults fit a small laptop; 4/8GiB+ recommended for parallel sessions or heavy stacks). Baked in at instance creation — changing them needs `limactl delete` + `up.sh` (work survives on the data disk). The disk is sparse. |
+| `cpus` / `memory` / `disk` | `2` / `4GiB` / `100GiB` | VM sizing (defaults fit a small laptop; 4/8GiB+ recommended for parallel sessions or heavy stacks). Changed in place: `limactl stop <instance> && limactl edit --memory N --cpus N [--disk N] --start <instance>`. The root disk and everything on it survive; `--disk` grows it but cannot shrink it. Mirror the new values here so the next render agrees. The disk is sparse. |
 | `data_disk` | `worktree-data` | persistent Lima data disk name; created by `up.sh` when missing. Persists `~/wt`, `~/repos`, `clone_paths` under `~`, agent/CLI auth (`~/.claude`, `~/.codex`, `~/.config/gh`, `~/.azure`), `~/.config/wt`, `~/.wt-meta` (markers + the PR-review `review-seen.json` ledger), the `sessions.meta_dir` directory, `~/.cache/ms-playwright` (browser binaries, ~1.2 GB for chromium+firefox), and `~/.claude.json` (by copy). **Empty = no persistence.** |
 | `data_disk_size` | `60GiB` | size used when creating the data disk. |
-| `host_mounts` | `["~"]` | host paths mounted read-only into the guest, each at the same path (`~`/`~/…` expand to your host home). `none` or `[]` = no mounts. The guest clones worktree-vm from the host checkout only when it is under one of them, and reads absolute host paths in `hooks.dir`, `secrets.source` and `clone_paths` only through them; `up.sh` warns at render time about any it leaves out. Narrow it when guest tools that walk `/` reach protected macOS folders through the home mount — macOS then blocks all access through the mount until a privacy prompt is answered. A platform fact: needs `limactl delete` + `up.sh`. |
+| `host_mounts` | `["~"]` | host paths mounted read-only into the guest, each at the same path (`~`/`~/…` expand to your host home). `none` or `[]` = no mounts. The guest clones worktree-vm from the host checkout only when it is under one of them, and reads absolute host paths in `hooks.dir`, `secrets.source` and `clone_paths` only through them; `up.sh` warns at render time about any it leaves out. Narrow it when guest tools that walk `/` reach protected macOS folders through the home mount — macOS then blocks all access through the mount until a privacy prompt is answered. Needs `limactl delete` + `up.sh`: `limactl edit --mount-only` could change it in place, but only `up.sh` re-checks the coverage above. |
