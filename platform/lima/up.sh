@@ -17,8 +17,9 @@
 #  - --sync-config: push the host config into a RUNNING guest, regenerate the
 #    derived env and restart the dashboard — the way to apply config edits
 #    without a VM restart. Provisioning-level changes (stacks) additionally
-#    need install.sh in the guest; platform facts (cpus/memory/ports/disks/mounts)
-#    always need `limactl delete` + up.sh (work survives on the data disk).
+#    need install.sh in the guest. cpus/memory/disk change in place with
+#    `limactl edit` (root disk kept); ports, added disks and mounts need
+#    `limactl delete` + up.sh (work survives on the data disk).
 #  - --sync-config is ALSO the only way to apply a host config edit at all: the
 #    guest keeps its own ~/.config/wt/config.yaml on the persistent data disk, so
 #    a rebuild re-attaches the OLD guest config and silently ignores every host
@@ -192,7 +193,13 @@ if [ "$SYNC_CONFIG" = 1 ]; then
   echo "      if any session is missing, check that the unit has it: systemctl show wt-dashboard -p KillMode"
   echo "Provisioning-level changes (stacks:, agents) additionally need one idempotent run in the guest (no restart):"
   echo "  limactl shell $INSTANCE -- bash -lc 'git -C ~/worktree-vm pull --ff-only && bash ~/worktree-vm/install.sh'"
-  echo "Platform facts (cpus/memory/ports/disks/mounts) still require: limactl delete $INSTANCE, then up.sh (work survives on the data disk)."
+  echo "cpus/memory/disk: limactl stop $INSTANCE && limactl edit --memory N --cpus N [--disk N] --start $INSTANCE"
+  echo "      (edits the instance's stored config in place — the root disk, its docker images and anything"
+  echo "       installed outside the data disk all survive; boot re-runs provisioning. --disk can grow the"
+  echo "       root disk, never shrink it. Mirror the change in your config so the next render agrees.)"
+  echo "Ports, added disks and mounts still require: limactl delete $INSTANCE, then up.sh (work survives on the data disk)."
+  echo "      (mounts too: limactl edit --mount-only could change them in place, but only up.sh checks that the"
+  echo "       repo checkout, hooks.dir and secrets.source are still under a mount.)"
   exit 0
 fi
 
@@ -212,8 +219,14 @@ if [ "$INSTANCE_STATUS" = "Running" ]; then
   echo "       so the paths must be absolute.)"
   echo "  full reboot + provision:  limactl stop $INSTANCE && limactl start $INSTANCE"
   echo "      (WARNING: restarts the VM — every running tmux/agent session is killed)"
-  echo "  platform facts (cpus/memory/ports/disks/mounts): limactl delete $INSTANCE, then up.sh"
-  echo "      (work, sessions and auth survive on the data disk)"
+  echo "  cpus/memory/disk:         limactl stop $INSTANCE && limactl edit --memory N --cpus N [--disk N] --start $INSTANCE"
+  echo "      (edits the stored config in place and keeps the root disk — its docker images and anything"
+  echo "       installed outside the data disk survive a resize. Boot re-runs provisioning. --disk grows,"
+  echo "       never shrinks. Restarts the VM, so running sessions are killed. Mirror the change in your"
+  echo "       config so the next render agrees.)"
+  echo "  ports / added disks / mounts: limactl delete $INSTANCE, then up.sh"
+  echo "      (work, sessions and auth survive on the data disk. Mounts go this way on purpose: only up.sh"
+  echo "       checks that the repo checkout, hooks.dir and secrets.source are still under a mount.)"
   exit 1
 fi
 
@@ -328,7 +341,7 @@ limactl validate "$OUT"
 # A RUNNING instance was already refused above, so an existing instance here is
 # stopped: booting it genuinely re-runs provisioning.
 if [ -n "$INSTANCE_LINE" ]; then
-  echo "instance '$INSTANCE' exists (${INSTANCE_STATUS:-status unknown}) — booting re-runs provisioning (platform-fact changes need: limactl delete $INSTANCE, then up.sh; work survives on the data disk)"
+  echo "instance '$INSTANCE' exists (${INSTANCE_STATUS:-status unknown}) — booting re-runs provisioning (cpus/memory/disk: limactl edit; ports/added disks/mounts: limactl delete $INSTANCE, then up.sh; work survives on the data disk)"
   limactl start "$INSTANCE"
 else
   limactl start --name "$INSTANCE" "$OUT"

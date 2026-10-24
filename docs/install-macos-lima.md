@@ -190,6 +190,11 @@ prints these options.
 
 - **Re-run provisioning at boot**: `limactl stop worktree-vm && limactl start
   worktree-vm` — equivalent to the in-guest `install.sh`, as a reboot.
-- **Platform facts** (`cpus`, `memory`, `ports`, disks): baked in at instance
-  creation — `limactl delete worktree-vm`, then `up.sh`. Your work, sessions
-  and auth survive on the data disk.
+- **CPUs, memory, root disk size**: changed in place, the root disk kept —
+  `limactl stop worktree-vm && limactl edit --memory N --cpus N [--disk N]
+  --start worktree-vm`. `--disk` can grow the root disk, never shrink it.
+  Put the same values in your config so the next render agrees.
+- **Ports, added disks, host mounts**: `limactl delete worktree-vm`, then
+  `up.sh`. Your work, sessions and auth survive on the data disk. Mounts go
+  this way on purpose: only `up.sh` checks that the repo checkout, `hooks.dir`
+  and `secrets.source` are still under a mount.
