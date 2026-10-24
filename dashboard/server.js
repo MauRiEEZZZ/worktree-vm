@@ -56,6 +56,19 @@ const PR_REVIEW_OWNER = process.env.PR_REVIEW_OWNER || '';            // org/use
 // the report and decides, so a missed nuance costs no lead time (unlike the
 // pre-PR self-review gate). '' = account default.
 const PR_REVIEW_MODEL = process.env.PR_REVIEW_MODEL || '';
+// Model for the CODEX second opinion inside those same reviews (github.review_codex_model).
+// Its own key for the same reason: the second opinion is the half the owner cannot
+// cross-check by reading, so it is worth spending on separately. '' = codex's own default.
+// It is interpolated into a command line the reviewer runs, so only a plain slug is
+// accepted; anything else is ignored with a warning rather than handed to a shell.
+const PR_REVIEW_CODEX_MODEL = (() => {
+  const v = process.env.PR_REVIEW_CODEX_MODEL || '';
+  if (v && !/^[A-Za-z0-9._-]+$/.test(v)) {
+    console.warn(`wt-dashboard: ignoring PR_REVIEW_CODEX_MODEL ${JSON.stringify(v)} -- not a plain model slug`);
+    return '';
+  }
+  return v;
+})();
 const REVIEW_SEEN = path.join(WT_META, 'review-seen.json');          // ledger (NOT in META_DIR, which is scanned as sessions): <owner/repo>#<n> already handled
 // Attention-digest: a cheap LLM pass over idle sessions -> ranked "who needs you, why, next".
 const DIGEST = process.env.DIGEST !== '0';                           // feature on by default (on-demand)
@@ -526,7 +539,15 @@ function reviewPrompt(pr, repoFull, since, baseRef) {
     // lib/wt/codex-review.sh drops stray arguments, falls back to the repo's real
     // default branch when the base is missing, and says on its first line whether
     // Codex ran — so a run that failed cannot be reported as a clean one.
-    `Also get an INDEPENDENT second opinion from Codex on the same diff. Run EXACTLY this command, with nothing appended to it: bash ${CODEX_REVIEW}${baseRef ? ` --base origin/${baseRef}` : ''}  Its first line tells you whether Codex ran (CODEX SECOND OPINION: ran / NOTHING TO REVIEW / DID NOT RUN); only 'ran' is a Codex opinion. On DID NOT RUN, say so in your report rather than silently reviewing alone, and never write that Codex found nothing. The helper wraps the first-class 'codex review' subcommand; do NOT look for codex MCP tools (codex no longer serves MCP) and do not fall back to 'codex exec'.`,
+    `Also get an INDEPENDENT second opinion from Codex on the same diff. Run EXACTLY this command, with nothing appended to it: bash ${CODEX_REVIEW}${baseRef ? ` --base origin/${baseRef}` : ''}${PR_REVIEW_CODEX_MODEL ? ` --model ${PR_REVIEW_CODEX_MODEL}` : ''}  Its first line tells you whether Codex ran (CODEX SECOND OPINION: ran / NOTHING TO REVIEW / DID NOT RUN); only 'ran' is a Codex opinion. On DID NOT RUN, say so in your report rather than silently reviewing alone, and never write that Codex found nothing. The helper wraps the first-class 'codex review' subcommand; do NOT look for codex MCP tools (codex no longer serves MCP) and do not fall back to 'codex exec'.`,
+    // A configured slug can go stale between codex releases. Through the helper a refused
+    // model is no longer a codex usage error the reviewer reads raw: it arrives as
+    // "DID NOT RUN: codex review exited N" with codex's stderr underneath. Tell the
+    // reviewer to recognise that case and recover through the helper again -- not by
+    // calling `codex review` itself, which is the path the helper exists to close.
+    ...(PR_REVIEW_CODEX_MODEL ? [
+      `The model "${PR_REVIEW_CODEX_MODEL}" can go stale between codex releases. If the helper reports DID NOT RUN and codex's stderr underneath says that model is unknown or not available, read ~/.codex/models_cache.json, pick the highest available slug of the same generation, and run the SAME helper command again with --model <that slug> in place of --model ${PR_REVIEW_CODEX_MODEL}. Never call codex review directly. Say in your report which model the second opinion actually ran on -- the helper's first line names it.`,
+    ] : []),
     `Compare your findings with Codex's (where do you agree/disagree) and produce ONE consolidated list of findings, each with an exact file:line.`,
     `ANCHOR the review as a PENDING pull-request review with INLINE, line-anchored comments (not as a loose issue comment):`,
     `- Build JSON and run: gh api repos/${repoFull}/pulls/${pr.number}/reviews --input <file> . OMIT "event" -> that creates a PENDING review (a draft; only you see it until you submit it in the GitHub UI).`,

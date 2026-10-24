@@ -18,7 +18,7 @@ t_sandbox_home
 
 HELPER="$T_REPO/lib/wt/codex-review.sh"
 CODEX_LOG="$T_TMP/codex.argv"
-CODEX_MODE="$T_TMP/codex.mode"      # ok | usage-error | silent
+CODEX_MODE="$T_TMP/codex.mode"      # ok | usage-error | silent | refuse-model
 cat > "$T_STUBS/codex" <<STUB
 #!/usr/bin/env bash
 [ "\$1" = --version ] && { echo "codex-cli 0.0.0-stub"; exit 0; }
@@ -26,6 +26,7 @@ printf '%s\n' "\$*" >> "$CODEX_LOG"
 case "\$(cat "$CODEX_MODE" 2>/dev/null)" in
   usage-error) echo "error: the argument '--base <BRANCH>' cannot be used with '[PROMPT]'" >&2; exit 2 ;;
   silent)      exit 0 ;;
+  refuse-model) echo "error: model 'gpt-stale' is not supported" >&2; exit 1 ;;
   *)           echo "stub review: no actionable defects in the reviewed changes"; exit 0 ;;
 esac
 STUB
@@ -148,4 +149,33 @@ OUT="$(run_bounded 5 bash "$HELPER" --base --dir "$WT")"; RC=$?
 assert_eq "$([ "$RC" = 124 ] && echo hung || echo finished)" "finished" "a flag-as-value does not hang either"
 assert_eq "$RC" "1" "and is a failure"
 assert_contains "$(first_line "$OUT")" "DID NOT RUN: --base needs a value, got the flag --dir" "saying what it got instead"
+
+# ---- 10. --model reaches Codex, and the report names what ran --------------------------
+# The watcher's configured Codex model (github.review_codex_model) travels as the helper's
+# own --model. Before that option existed, a `-c model=...` appended to the helper's
+# command line was one of the stray arguments it reports and ignores -- so the configured
+# model was quietly not used while the review still "ran".
+echo ok > "$CODEX_MODE"; : > "$CODEX_LOG"
+OUT="$(bash "$HELPER" --base origin/develop --dir "$WT" --model gpt-test-1)"; RC=$?
+assert_eq "$RC" "0" "a review with --model runs"
+assert_contains "$(last_argv)" 'model="gpt-test-1"' "the slug reaches codex as a -c model override"
+assert_contains "$(first_line "$OUT")" "model gpt-test-1" "and the first line names the model that ran"
+assert_not_contains "$OUT" "ignored argument" "--model is an option, not a stray argument"
+: > "$CODEX_LOG"
+OUT="$(bash "$HELPER" --base origin/develop --dir "$WT" --model=gpt-test-2)"
+assert_contains "$(last_argv)" 'model="gpt-test-2"' "--model=<slug> works as well"
+: > "$CODEX_LOG"
+OUT="$(bash "$HELPER" --base origin/develop --dir "$WT")"
+assert_not_contains "$(last_argv)" 'model=' "without --model nothing is added to codex's command line"
+assert_contains "$(first_line "$OUT")" "model codex default" "and the first line says the default ran"
+# a slug codex refuses: loud, and the failure names the model so the reviewer knows what to swap
+echo refuse-model > "$CODEX_MODE"
+OUT="$(bash "$HELPER" --base origin/develop --dir "$WT" --model gpt-stale)"; RC=$?
+assert_eq "$([ "$RC" -ne 0 ] && echo failed || echo ok)" "failed" "a refused model is a failure"
+assert_contains "$(first_line "$OUT")" "DID NOT RUN: codex review exited 1 (model gpt-stale)" "that names the refused model"
+assert_contains "$OUT" "is not supported" "with codex's own stderr underneath"
+echo ok > "$CODEX_MODE"
+OUT="$(run_bounded 5 bash "$HELPER" --model)"; RC=$?
+assert_eq "$([ "$RC" = 124 ] && echo hung || echo finished)" "finished" "--model with no value does not hang"
+assert_contains "$(first_line "$OUT")" "DID NOT RUN: --model needs a value" "and says so"
 t_end

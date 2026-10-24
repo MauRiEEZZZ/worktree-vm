@@ -51,4 +51,34 @@ PROV="$(grep -v '^\s*#' "$T_REPO/provision/40-agents.sh")"
 assert_not_contains "$PROV" 'mcp add' "provisioning no longer registers codex as an MCP server"
 assert_contains "$PROV" 'codex review --help' "and proves the command it depends on exists instead of assuming it"
 assert_contains "$PROV" 'mcp remove' "while cleaning up the stale registration earlier provisions left"
+
+# The second opinion's model is configurable (github.review_codex_model ->
+# PR_REVIEW_CODEX_MODEL). Empty must leave the command exactly as it was — the
+# default path is what nearly every install runs — and a set value must reach the
+# `codex review` line, with the recovery instruction that makes a stale slug visible.
+assert_contains "$PROMPT" 'PR_REVIEW_CODEX_MODEL' "the watcher's prompt can carry a codex model"
+assert_contains "$PROMPT" 'models_cache.json' "and tells the reviewer how to recover from a stale slug"
+CFG="$(grep -v '^\s*#' "$T_REPO/lib/config/generate-env.sh")"
+assert_contains "$CFG" 'github.review_codex_model' "the config key is parsed"
+assert_contains "$CFG" 'PR_REVIEW_CODEX_MODEL' "and reaches the service environment"
+assert_contains "$(cat "$T_REPO/config.example.yaml")" 'review_codex_model' "and is documented for the user"
+
+# Shape of the line itself, so this guards server.js and not a copy of its logic:
+# the override must be CONDITIONAL, so the default install's command is unchanged.
+# Since the helper (#14) the watcher no longer runs `codex review` itself, and the
+# helper reports and IGNORES any argument it does not know -- so a `-c model=...`
+# carried over onto its command line would be dropped and the configured model
+# quietly not used. The model has to travel as the helper's own --model option.
+CODEXLINE="$(sed -n '/Also get an INDEPENDENT second opinion from Codex/p' "$T_REPO/dashboard/server.js")"
+assert_contains "$CODEXLINE" 'PR_REVIEW_CODEX_MODEL ?' "the model override is conditional"
+assert_contains "$CODEXLINE" '--model ${PR_REVIEW_CODEX_MODEL}' "a configured slug goes to the helper as --model"
+assert_not_contains "$CODEXLINE" '-c model=' "not as a -c override the helper would drop as a stray argument"
+assert_contains "$CODEXLINE" ": ''" "and an empty setting adds nothing to the command"
+# The recovery must go back through the helper; calling codex directly is the path
+# the helper exists to close.
+RECOVER="$(printf '%s' "$PROMPT" | grep 'models_cache.json')"
+assert_contains "$RECOVER" 'DID NOT RUN' "recovery keys on the helper's own failure line"
+assert_contains "$RECOVER" 'SAME helper command again with --model' "and re-runs the helper with another slug"
+assert_contains "$RECOVER" 'Never call codex review directly' "rather than calling codex itself"
+
 t_end
